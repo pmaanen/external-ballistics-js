@@ -172,6 +172,12 @@ tests cover mixed units, comparisons, arbitrary table steps, both calculators,
 coverage, invalid/zero input, cancellation/recovery, mobile layout, keyboard use,
 safe names and local asset loading. Build before running browser tests.
 
+The [GitHub Actions build workflow](.github/workflows/build.yml) runs on pushes,
+pull requests, and manual dispatch. It uses the Node version from `.nvmrc`, caches
+npm downloads, installs with `npm ci`, runs regression tests, and typechecks/builds
+the app. Successful runs upload `dist/` as the downloadable `vector-app-dist`
+artifact, retained for 14 days.
+
 ## License and attribution
 
 GNU GPL version 2; see [LICENSE](LICENSE). Original GNU Ballistics routines are
