@@ -2,10 +2,11 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>external-ballistics.js example</title>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700,400italic">
         <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
-        <link href="https://unpkg.com/vuetify/dist/vuetify.min.css" rel="stylesheet" type="text/css">
+        <link href="https://unpkg.com/vuetify@0.14.11/dist/vuetify.min.css" rel="stylesheet" type="text/css">
         <style>
         #chart-wrapper {
             position: relative;
@@ -41,6 +42,8 @@
         <v-app id="external-ballistics-calculator">
             <main>
                 <v-container>
+                    <p><a href="../">Open the full ballistics workbench</a></p>
+                    <p id="legacy-status" role="status" aria-live="polite"></p>
                     <v-layout row>
                         <v-flex xs12 sm4>
                             <v-select v-bind:items="dragFunctions" v-model="dragFunction" label="Drag Function"
@@ -66,7 +69,7 @@
             <v-container>
                 <v-layout row>
                     <v-flex xs12>
-                        <form novalidate @submit.stop.prevent="submit">
+                        <form novalidate @submit.stop.prevent="calculateWithoutCheckingValue">
                             <v-layout row-sm column child-flex-sm>
                                 <v-flex class="mt-4" sm4>
                                     <v-text-field class="mt-4" v-model="bulletMass" v-on:input="calculate"
@@ -89,7 +92,7 @@
                                         Wind Direction: <v-text-field class="ml-2" :value="windAngle"
                                                                       suffix="degrees"
                                                                       disabled></v-subheader>
-                                    <v-slider min="0" max="180" v-model="windAngle"
+                                    <v-slider min="0" max="360" v-model="windAngle"
                                               v-on:input="calculateWithoutCheckingValue"></v-slider>
                                 </v-flex>
                                 <v-flex sm4>
@@ -99,7 +102,7 @@
                                                       v-on:input="calculate" suffix="yards"
                                                       disabled></v-text-field>
                                     </v-subheader>
-                                    <v-slider min="0" max="2000" v-model="zeroRange"
+                                    <v-slider min="1" max="2000" v-model="zeroRange"
                                               v-on:input="calculate"></v-slider>
                                     <v-subheader>
                                         Sight Line Height:
@@ -121,7 +124,7 @@
         <script src="libs/vue_charts/Chart.min.js"></script>
         <script src="libs/vue_charts/vue-charts.min.js"></script>
         <script src="libs/vue.js"></script>
-        <script src="https://unpkg.com/vuetify/dist/vuetify.min.js"></script>
+        <script src="https://unpkg.com/vuetify@0.14.11/dist/vuetify.min.js"></script>
         <script src="js/example_app.js"></script>
 
     </body>

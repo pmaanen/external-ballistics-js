@@ -83,8 +83,25 @@ var externalBallisticsVariables = {
 };
 
 var calculateExternalBallistics = function(value) {
-    var floatValue = parseFloat(value);
-    if ( !floatValue || isNaN(floatValue) ) {
+    // Revised 2026-10-21: validate the complete snapshot; zero is a valid input
+    // for sight height, wind and inclination. Never coerce empty text to zero.
+    var status = document.getElementById('legacy-status');
+    var variables = { dragFunction: externalBallisticsVariables.dragFunction };
+    var numericFields = ['bulletMass', 'dragCoefficient', 'muzzleVelocity', 'sightHeight',
+        'shootingAngle', 'windSpeed', 'windAngle', 'zeroRange', 'drawRange'];
+    try {
+        numericFields.forEach(function(key) {
+            var raw = externalBallisticsVariables[key];
+            variables[key] = typeof raw === 'string' && raw.trim() === '' ? NaN : Number(raw);
+            if (!Number.isFinite(variables[key])) throw new Error('Complete all numeric fields.');
+        });
+        if (variables.bulletMass <= 0) throw new Error('Projectile mass must be positive.');
+        if (variables.drawRange < 1 || variables.drawRange > 2000) throw new Error('Draw range must be between 1 and 2000 yards.');
+        externalBallistics.setVariables(variables);
+        externalBallistics.solveAll({ maxRange: variables.drawRange });
+        if (status) status.textContent = 'Results are current. The full workbench is available at the repository root.';
+    } catch (error) {
+        if (status) status.textContent = 'Results are stale: ' + error.message;
         return;
     }
 
@@ -94,10 +111,11 @@ var calculateExternalBallistics = function(value) {
     externalBallisticsVariables.ballisticsDatasets[0].data = [];
     externalBallisticsVariables.ballisticsDatasets[1].data = [];
 
-    externalBallistics.setVariables(externalBallisticsVariables);
-    externalBallistics.solveAll();
-
-    for (var yardage = 0; yardage <= externalBallisticsVariables.drawRange; yardage += 10) {
+    for (var yardage = 0; yardage <= variables.drawRange; yardage += 10) {
+        if (externalBallistics.getRange(yardage) === null) {
+            if (status) status.textContent = 'Trajectory stopped at the model limit; later distances are unavailable.';
+            break;
+        }
         externalBallisticsVariables.calculatedRanges.push(
             externalBallistics.getRange(yardage).toFixed(0));
 
@@ -116,7 +134,7 @@ var calculateExternalBallistics = function(value) {
        // 0.5 * externalBallisticsVariables.bulletMass * (velocity * velocity) *
        // (1 / (7000 * -externalBallistics.DEFAULT_GRAVITY) )
        // - to convert ft-lbf to Joules, multiply the value with 1.35581795
-       var kineticEnergy = 0.5 * externalBallisticsVariables.bulletMass * 0.0000647989 *
+       var kineticEnergy = 0.5 * variables.bulletMass * 0.00006479891 *
             Math.pow(velocity * 0.3048, 2);
        externalBallisticsVariables.ballisticsDatasets[1].data.push(
            kineticEnergy.toFixed(2));
