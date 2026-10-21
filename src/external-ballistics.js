@@ -1,6 +1,18 @@
+/* JavaScript port of the GNU Ballistics Library, distributed under GPL-2.0.
+ * Numerical integration, validation and sampling revised 2026-10-21.
+ * Drag coefficients retain the original GNU Ballistics values and attribution.
+ */
+(function (root, factory) {
+    'use strict';
+    var Constructor = factory();
+    if (typeof module === 'object' && module.exports) module.exports = Constructor;
+    root.ExternalBallistics = Constructor;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+'use strict';
+
 function ExternalBallistics() {
-    this.BCOMP_MAXRANGE = 50001; // maximum ballistics calculation range in feet
-    this.DEFAULT_GRAVITY = -32.174; // gravity in feet - could also be set as a variable
+    this.BCOMP_MAXRANGE = 50001; // maximum number of legacy one-yard records (including the muzzle)
+    this.DEFAULT_GRAVITY = -32.174; // gravity in ft/s²
     this.DEFAULT_YINTERCEPT = 0; // y-height of the projectile when it crosses the zero range (inches) - could also be set as a variable
     this.DRAG_FUNCTIONS = {
         'G1': {
@@ -115,267 +127,230 @@ function ExternalBallistics() {
    };
 }
 
-ExternalBallistics.prototype.setVariables = function(variables) {
-    this.dragFunction = variables.dragFunction; // drag function 'G1', 'G2', 'G5', 'G6', 'G7' or 'G8'
-    this.dragCoefficient = variables.dragCoefficient; // ballistic coefficient of the projectile for the drag function
-    this.muzzleVelocity = variables.muzzleVelocity; // muzzle velocity of the projectile (feet)
-    this.sightHeight = variables.sightHeight; // height of the line of sight from the center of the bore of the barrel (inches)
-    this.shootingAngle = variables.shootingAngle; // up-down angle of the barrel relative to the ground (degrees)
-    this.windSpeed = variables.windSpeed; // wind speed (feet)
-    this.windAngle = variables.windAngle; // angle of the wind (degrees)
-    this.zeroRange = variables.zeroRange; // zero range of the weapon system (yards)
+
+class BallisticsError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.name = 'BallisticsError';
+        this.code = code;
+    }
+}
+
+function finite(name, value, min, max) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+        throw new BallisticsError('INVALID_INPUT', name + ' must be a finite number between ' + min + ' and ' + max + '.');
+    }
+    return value;
+}
+
+ExternalBallistics.Error = BallisticsError;
+ExternalBallistics.VERSION = '0.2.0';
+ExternalBallistics.prototype.setVariables = function (v) {
+    if (!v || !Object.prototype.hasOwnProperty.call(this.DRAG_FUNCTIONS, v.dragFunction)) {
+        throw new BallisticsError('INVALID_INPUT', 'Choose a supported drag model: G1, G2, G5, G6, G7 or G8.');
+    }
+    this.dragFunction = v.dragFunction;
+    this.dragCoefficient = finite('Ballistic coefficient', v.dragCoefficient, 0.001, 10);
+    this.muzzleVelocity = finite('Muzzle velocity (ft/s)', v.muzzleVelocity, 1, 9999);
+    this.sightHeight = finite('Sight height (in)', v.sightHeight, 0, 100);
+    this.shootingAngle = finite('Shooting angle (degrees)', v.shootingAngle, -89, 89);
+    this.windSpeed = finite('Wind speed (mph)', v.windSpeed, 0, 200);
+    this.windAngle = finite('Wind direction (degrees)', v.windAngle, -3600, 3600);
+    this.zeroRange = finite('Zero range (yards)', v.zeroRange, 0.01, 50000);
     this.gravity = this.DEFAULT_GRAVITY;
-    this.yIntercept = this.DEFAULT_YINTERCEPT;
-    this.maximumValidRange = 0; // maximum valid range of the solution (feet)
+    this.yIntercept = finite('Zero intercept (in)', v.yIntercept ?? this.DEFAULT_YINTERCEPT, -100, 100);
     this.solution = [];
-};
-
-ExternalBallistics.prototype.solveAll = function() {
-    var deltaTime = 0;
-
-    var zeroAngle = this.getZeroAngle();
-
-    var velocity = 0;
-    var velocityX = this.muzzleVelocity * Math.cos( this.degToRad(zeroAngle) );
-	var velocityY = this.muzzleVelocity * Math.sin( this.degToRad(zeroAngle) );
-
-    var headWind = this.getHeadWind(this.windSpeed, this.windAngle);
-    var crossWind = this.getCrossWind(this.windSpeed, this.windAngle);
-
-    var gravityVectorX = this.gravity * Math.sin( this.degToRad( (this.shootingAngle + zeroAngle) ) );
-    var gravityVectorY = this.gravity * Math.cos( this.degToRad( (this.shootingAngle + zeroAngle) ) );
-
-    var currentHeight = -this.sightHeight / 12;
-    var currentRange = 0;
-
     this.maximumValidRange = 0;
+    this.result = null;
+};
 
-    for (var time = 0;; time = time + deltaTime) {
-
-        velocityX1 = velocityX;
-        velocityY1 = velocityY;
-
-        velocity = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
-
-        // Compute acceleration using the drag function retardation
-        var dragVelocity = this.retard(velocity + headWind);
-        var dragVelocityX = -(velocityX / velocity) * dragVelocity;
-        var dragVelocityY = -(velocityY / velocity) * dragVelocity;
-
-        // Compute velocity, including the resolved gravity vectors.
-        velocityX = velocityX + deltaTime * dragVelocityX + deltaTime * gravityVectorX;
-        velocityY = velocityY + deltaTime * dragVelocityY + deltaTime * gravityVectorY;
-
-        if (currentRange / 3 >= this.maximumValidRange) {
-            this.solution[10*this.maximumValidRange+0] = currentRange / 3; // Range (yards)
-            this.solution[10*this.maximumValidRange+1] = currentHeight * 12; // Path (inches)
-            this.solution[10*this.maximumValidRange+2] = -this.radToMinuteOfAngle(
-                Math.atan(currentHeight / currentRange) ); // Correction (MOA)
-            this.solution[10*this.maximumValidRange+3] = time + deltaTime; // Time (seconds)
-            this.solution[10*this.maximumValidRange+4] = this.getWindageDeflection(
-                crossWind, this.muzzleVelocity, currentRange, time + deltaTime); // Windage (inches)
-            this.solution[10*this.maximumValidRange+5] = this.radToMinuteOfAngle(
-                Math.atan( (this.solution[10*this.maximumValidRange+4]/12) /
-                           (this.solution[10*this.maximumValidRange+0]*3) ) ); // Windage (MOA)
-            this.solution[10*this.maximumValidRange+6] = velocity; // Combined velocity (feet)
-            this.solution[10*this.maximumValidRange+7] = velocityX; // x-velocity (feet)
-            this.solution[10*this.maximumValidRange+8] = velocityY; // y-velocity (feet)
-
-            this.maximumValidRange++;
-       }
-
-        // Compute position based on average velocity.
-        currentRange = currentRange + deltaTime * (velocityX + velocityX1) / 2;
-        currentHeight = currentHeight + deltaTime * (velocityY + velocityY1) / 2;
-
-        deltaTime = 0.5 / velocity;
-
-        if (Math.abs(velocityY) > Math.abs(3*velocityX)) {
-            break;
+ExternalBallistics.prototype.retard = function (velocity) {
+    finite('Relative speed (ft/s)', velocity, Number.MIN_VALUE, 9999.999999);
+    finite('Ballistic coefficient', this.dragCoefficient, 0.001, 10);
+    var drag = this.DRAG_FUNCTIONS[this.dragFunction];
+    if (!drag) throw new BallisticsError('INVALID_INPUT', 'Unsupported drag model.');
+    for (var i = 0; i < drag.thresholds.length; i++) {
+        if (velocity > drag.thresholds[i]) {
+            return drag.values[i].A * Math.pow(velocity, drag.values[i].M) / this.dragCoefficient;
         }
-		if (this.maximumValidRange > this.BCOMP_MAXRANGE) {
-            break;
+    }
+    throw new BallisticsError('MODEL_LIMIT', 'Speed is outside the drag model.');
+};
+
+ExternalBallistics.prototype.degToRad = function (value) { return value * Math.PI / 180; };
+ExternalBallistics.prototype.radToDeg = function (value) { return value * 180 / Math.PI; };
+ExternalBallistics.prototype.minuteOfAngleToRad = function (value) { return value * Math.PI / 10800; };
+ExternalBallistics.prototype.radToMinuteOfAngle = function (value) { return value * 10800 / Math.PI; };
+ExternalBallistics.prototype.getHeadWind = function (speedMph, angleDegrees) {
+    return speedMph * Math.cos(this.degToRad(angleDegrees));
+};
+ExternalBallistics.prototype.getCrossWind = function (speedMph, angleDegrees) {
+    return speedMph * Math.sin(this.degToRad(angleDegrees));
+};
+ExternalBallistics.prototype.getWindageDeflection = function (speedMph, velocityFps, rangeFeet, seconds) {
+    return speedMph * 17.6 * (seconds - rangeFeet / velocityFps);
+};
+
+// Distance-based RK4: all state components are evaluated at the same x (feet).
+// Coordinates follow the line of sight, so gravity depends on sight inclination,
+// not the bore's additional elevation. Windage retains the GNU lag approximation.
+ExternalBallistics.prototype.integrate = function (angleDegrees, options) {
+    options = options || {};
+    if (!this.dragFunction) throw new BallisticsError('INVALID_INPUT', 'Call setVariables first.');
+    finite('Bore elevation (degrees)', angleDegrees, -45, 45);
+    var maxRange = finite('Maximum range (yards)', options.maxRange ?? 2000, 0.001, 50000);
+    var step = finite('Integration step (feet)', options.stepFeet ?? 1.5, 0.01, 10);
+    var interval = finite('Sample interval (yards)', options.intervalYards ?? 1, 0.01, 50000) * 3;
+    var maxSteps = finite('Step limit', options.maxSteps ?? 250000, 1, 300000);
+    var maxTime = finite('Flight time limit (seconds)', options.maxTime ?? 60, 0.001, 120);
+    var shootingAngle = this.degToRad(finite('Shooting angle (degrees)', options.shootingAngle ?? this.shootingAngle, -89, 89));
+    var head = options.calm ? 0 : this.getHeadWind(this.windSpeed, this.windAngle) * (22 / 15);
+    var cross = options.calm ? 0 : this.getCrossWind(this.windSpeed, this.windAngle);
+    var gx = this.gravity * Math.sin(shootingAngle);
+    var gy = this.gravity * Math.cos(shootingAngle);
+    var self = this;
+    function derivative(s) {
+        var vx = s[2], vy = s[3], speed = Math.hypot(vx, vy);
+        if (!(vx > 0.01) || !s.every(Number.isFinite)) {
+            throw new BallisticsError('FORWARD_LIMIT', 'Trajectory no longer advances downrange.');
         }
-
-   }
-};
-
-ExternalBallistics.prototype.getHeadWind = function(windAngle, windSpeed) {
-    return Math.cos( this.degToRad(windAngle) ) * windSpeed;
-};
-
-ExternalBallistics.prototype.getCrossWind = function(windAngle, windSpeed) {
-    return Math.sin( this.degToRad(windAngle) ) * windSpeed;
-};
-
-ExternalBallistics.prototype.getWindageDeflection = function(windSpeed, muzzleVelocity, range, time) {
-    windVelocity = windSpeed * 17.60; // Convert to inches per second.
-    return windVelocity * (time - range / muzzleVelocity);
-};
-
-ExternalBallistics.prototype.degToRad = function(degrees) {
-    return degrees * Math.PI / 180.0;
-};
-
-ExternalBallistics.prototype.radToDeg = function(radians) {
-    return radians * 180.0 / Math.PI;
-};
-
-ExternalBallistics.prototype.minuteOfAngleToRad = function(minuteOfAngle) {
-    return minuteOfAngle / 60.0 * Math.PI / 180.0;
-};
-
-ExternalBallistics.prototype.radToMinuteOfAngle = function(radians) {
-    return radians * 60.0 * 180.0 / Math.PI;
-};
-
-ExternalBallistics.prototype.getZeroAngle = function() {
-    var time = 0;
-	var deltaTime = 1 / this.muzzleVelocity;
-
-    var currentRange = 0;
-    var currentHeight = 0;
-
-    var angle = 0;
-    var deltaAngle = this.degToRad(14);
-
-    for (angle = 0;; angle = angle + deltaAngle) {
-
-        velocityY = this.muzzleVelocity * Math.sin(angle);
-        velocityX = this.muzzleVelocity * Math.cos(angle);
-        gravityVectorX = this.gravity * Math.sin(angle);
-        gravityVectorY = this.gravity * Math.cos(angle);
-
-        for (time = 0, currentRange = 0, currentHeight = 0-this.sightHeight/12;
-             currentRange <= this.zeroRange*3; time = time + deltaTime) {
-            velocityY1 = velocityY;
-            velocityX1 = velocityX;
-            velocity = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
-
-			deltaTime = 1 / velocity;
-
-            dragVelocity = this.retard(velocity);
-            dragVelocityY = -(velocityY / velocity) * dragVelocity;
-			dragVelocityX = -(velocityX / velocity) * dragVelocity;
-
-            velocityY += deltaTime * dragVelocityY + deltaTime * gravityVectorY;
-            velocityX += deltaTime * dragVelocityX + deltaTime * gravityVectorX;
-
-            currentHeight += deltaTime * (velocityY + velocityY1) / 2;
-            currentRange += deltaTime * (velocityX + velocityX1) / 2;
-
-            // Break early to save CPU time if we won't find a solution.
-            if (velocityY < 0 && currentHeight < this.yIntercept) {
-                break;
-           }
-            if (velocityY > 3 * velocityX) {
-                break;
-           }
-       }
-
-        if (currentHeight > this.yIntercept && deltaAngle > 0) {
-            deltaAngle = -deltaAngle / 2;
-       }
-        if (currentHeight < this.yIntercept && deltaAngle < 0) {
-            deltaAngle = -deltaAngle / 2;
-       }
-
-       if (Math.abs(deltaAngle) < this.minuteOfAngleToRad(0.01)) {
-           break;
-       }
-       if (angle > this.degToRad(45)) {
-           break;
-       }
-
-   }
-
-    return this.radToDeg(angle);
-};
-
-ExternalBallistics.prototype.retard = function(velocity) {
-    A = -1;
-    M = -1;
-
-    dragFunction = this.DRAG_FUNCTIONS[this.dragFunction];
-    if (typeof dragFunction !== 'undefined') {
-        thresholdsLength = dragFunction.thresholds.length;
-        for (var i = 0; i < thresholdsLength; i++) {
-            if (velocity > dragFunction.thresholds[i]) {
-                A = dragFunction.values[i]['A'];
-                M = dragFunction.values[i]['M'];
+        var relative = speed + head;
+        if (!(relative > 0 && relative < 10000)) {
+            throw new BallisticsError('MODEL_LIMIT', 'Relative airspeed left the supported drag-model range.');
+        }
+        var drag = self.retard(relative);
+        var ax = gx - drag * vx / speed;
+        var ay = gy - drag * vy / speed;
+        return [vy / vx, 1 / vx, ax / vx, ay / vx];
+    }
+    function add(s, d, h) { return s.map(function (v, i) { return v + d[i] * h; }); }
+    function point(x, s, d) {
+        return { x: x, y: s[0], time: s[1], vx: s[2], vy: s[3], ax: d[2] * s[2], ay: d[3] * s[2] };
+    }
+    var x = 0;
+    var s = [-this.sightHeight / 12, 0, this.muzzleVelocity * Math.cos(this.degToRad(angleDegrees)),
+        this.muzzleVelocity * Math.sin(this.degToRad(angleDegrees))];
+    var d = derivative(s);
+    var points = [point(0, s, d)];
+    var nextSample = interval, target = maxRange * 3;
+    var reason = 'requested-range', steps = 0;
+    for (; x < target - 1e-9; steps++) {
+        if (steps >= maxSteps) { reason = 'step-limit'; break; }
+        if (s[1] >= maxTime) { reason = 'time-limit'; break; }
+        if (Math.abs(s[3]) > 3 * s[2]) { reason = 'forward-limit'; break; }
+        var h = Math.min(step, target - x, nextSample - x);
+        try {
+            var k1 = derivative(s);
+            var k2 = derivative(add(s, k1, h / 2));
+            var k3 = derivative(add(s, k2, h / 2));
+            var k4 = derivative(add(s, k3, h));
+            var next = s.map(function (v, i) { return v + h * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]) / 6; });
+            var nd = derivative(next);
+            if (next[1] > maxTime) { reason = 'time-limit'; break; }
+            s = next; d = nd; x += h;
+        } catch (error) {
+            if (error instanceof BallisticsError && (error.code === 'FORWARD_LIMIT' || error.code === 'MODEL_LIMIT')) {
+                reason = error.code === 'MODEL_LIMIT' ? 'model-limit' : 'forward-limit';
                 break;
             }
+            throw error;
+        }
+        if (x >= nextSample - 1e-9 || x >= target - 1e-9) {
+            points.push(point(x, s, d));
+            nextSample += interval;
         }
     }
-
-    if (A != -1 && M != -1 && velocity > 0 && velocity < 10000) {
-        retardedVelocity = A * Math.pow(velocity, M) / this.dragCoefficient;
-        return retardedVelocity;
-    }
-
-    return -1;
+    if (x > points[points.length - 1].x + 1e-9) points.push(point(x, s, d));
+    return { points: points, termination: reason, steps: steps, boreAngle: angleDegrees,
+        maxRange: x / 3, muzzleVelocity: this.muzzleVelocity, crossWind: cross };
 };
 
-ExternalBallistics.prototype.getRange = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage];
+function hermite(a, b, da, db, h, u) {
+    var u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * a + (u3 - 2 * u2 + u) * h * da
+        + (-2 * u3 + 3 * u2) * b + (u3 - u2) * h * db;
+}
+
+ExternalBallistics.sample = function (result, yardage) {
+    finite('Distance (yards)', yardage, 0, 50000);
+    if (!result || yardage > result.maxRange + 1e-8) return null;
+    var points = result.points, x = Math.min(yardage * 3, points[points.length - 1].x);
+    var lo = 0, hi = points.length - 1;
+    while (hi - lo > 1) {
+        var mid = (lo + hi) >> 1;
+        if (points[mid].x <= x) lo = mid; else hi = mid;
     }
-    return 0;
+    var a = points[lo], b = points[hi], h = b.x - a.x, u = h ? (x - a.x) / h : 0;
+    var y = h ? hermite(a.y, b.y, a.vy / a.vx, b.vy / b.vx, h, u) : a.y;
+    var time = h ? hermite(a.time, b.time, 1 / a.vx, 1 / b.vx, h, u) : a.time;
+    var vx = h ? hermite(a.vx, b.vx, a.ax / a.vx, b.ax / b.vx, h, u) : a.vx;
+    var vy = h ? hermite(a.vy, b.vy, a.ay / a.vx, b.ay / b.vx, h, u) : a.vy;
+    var wind = result.crossWind * 17.6 * (time - x / result.muzzleVelocity);
+    return { range: x / 3, path: y * 12, time: time, velocity: Math.hypot(vx, vy),
+        velocityX: vx, velocityY: vy, windage: wind,
+        moa: x === 0 ? null : -Math.atan(y / x) * 10800 / Math.PI,
+        windageMOA: x === 0 ? null : Math.atan(wind / (12 * x)) * 10800 / Math.PI };
 };
 
-ExternalBallistics.prototype.getPath = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+1];
+// The sight-in reference is level and calm, as in the original API. The shot
+// itself uses shootingAngle and wind. Intercept is supplied in inches.
+ExternalBallistics.prototype.getZeroAngle = function () {
+    var self = this;
+    var target = this.yIntercept / 12;
+    function residual(angle) {
+        var r = self.integrate(angle, { maxRange: self.zeroRange, intervalYards: self.zeroRange,
+            calm: true, shootingAngle: 0 });
+        if (r.termination !== 'requested-range') return null;
+        return r.points[r.points.length - 1].y - target;
     }
-    return 0;
+    var low = -5, high = 0;
+    var fLow = residual(low), fHigh = residual(high);
+    if (fHigh !== null && Math.abs(fHigh) < 1e-7) return high;
+    if (fLow !== null && fLow > 0) throw new BallisticsError('ZERO_UNREACHABLE', 'Zero lies outside the supported low-angle branch.');
+    for (var i = 0; i < 12 && (fHigh === null || fHigh < 0); i++) {
+        if (fHigh !== null) { low = high; fLow = fHigh; }
+        high = high === 0 ? 0.05 : Math.min(45, high * 2);
+        fHigh = residual(high);
+        if (high === 45) break;
+    }
+    if (fLow === null || fHigh === null || fHigh < 0) {
+        throw new BallisticsError('ZERO_UNREACHABLE', 'No reachable low-angle zero at this distance. Reduce the zero range.');
+    }
+    for (var j = 0; j < 60; j++) {
+        var angle = (low + high) / 2, f = residual(angle);
+        if (f === null) throw new BallisticsError('ZERO_UNREACHABLE', 'Zero range exceeds the supported trajectory.');
+        if (Math.abs(f) < 1e-7) return angle;
+        if (f > 0) high = angle; else low = angle;
+    }
+    throw new BallisticsError('ZERO_CONVERGENCE', 'Zero solver did not converge.');
 };
 
-ExternalBallistics.prototype.getMinuteOfAngle = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+2];
+ExternalBallistics.prototype.solveAll = function (options) {
+    options = options || {};
+    finite('Legacy record capacity', this.BCOMP_MAXRANGE, 2, 50001);
+    var maxRange = options.maxRange ?? Math.min(2000, this.BCOMP_MAXRANGE - 1);
+    if (maxRange > this.BCOMP_MAXRANGE - 1) throw new BallisticsError('INVALID_INPUT', 'Range exceeds the legacy record capacity.');
+    var angle = this.getZeroAngle();
+    var result = this.integrate(angle, options.maxRange === undefined ? Object.assign({}, options, { maxRange: maxRange }) : options);
+    this.result = result;
+    this.solution = [];
+    var count = Math.floor(result.maxRange + 1e-8) + 1;
+    for (var i = 0; i < count; i++) {
+        var s = ExternalBallistics.sample(result, i);
+        this.solution.push(s.range, s.path, s.moa, s.time, s.windage, s.windageMOA,
+            s.velocity, s.velocityX, s.velocityY, 0);
     }
-    return 0;
+    this.maximumValidRange = count;
+    return result;
 };
-
-
-ExternalBallistics.prototype.getTime = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+3];
-    }
-    return 0;
-};
-
-ExternalBallistics.prototype.getWindage = function(yardage) {
-    if (yardage < this.maximumValidRange){
-        return this.solution[10*yardage+4];
-    }
-    return 0;
-};
-
-ExternalBallistics.prototype.getWindageMOA = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+5];
-    }
-    return 0;
-};
-
-ExternalBallistics.prototype.getVelocity = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+6];
-    }
-    return 0;
-};
-
-ExternalBallistics.prototype.getVelocityX = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+7];
-    }
-    return 0;
-};
-
-ExternalBallistics.prototype.getVelocityY = function(yardage) {
-    if (yardage < this.maximumValidRange) {
-        return this.solution[10*yardage+8];
-    }
-    return 0;
-};
+ExternalBallistics.prototype.sampleAt = function (yardage) { return ExternalBallistics.sample(this.result, yardage); };
+var getters = { getRange: 0, getPath: 1, getMinuteOfAngle: 2, getTime: 3, getWindage: 4,
+    getWindageMOA: 5, getVelocity: 6, getVelocityX: 7, getVelocityY: 8 };
+Object.keys(getters).forEach(function (name) {
+    ExternalBallistics.prototype[name] = function (yardage) {
+        if (!Number.isInteger(yardage) || yardage < 0) throw new BallisticsError('INVALID_INDEX', 'Legacy lookups require a nonnegative integer yard index. Use sampleAt for fractional distances.');
+        return yardage < this.maximumValidRange ? this.solution[yardage * 10 + getters[name]] : null;
+    };
+});
+return ExternalBallistics;
+});
