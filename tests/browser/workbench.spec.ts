@@ -58,7 +58,7 @@ test('calculate, save three solutions, rename, duplicate, overlay and remove', a
   await expect(page.locator('#table-count')).toContainText('1 solution');
 });
 
-test('zero values recalculate, invalid fields are identified, and short coverage stays missing', async ({ page }) => {
+test('zero values recalculate, invalid fields are identified, and distance changes recalculate saved coverage', async ({ page }) => {
   await page.locator('#sight').fill('0');
   await page.locator('#load-name').fill('Zero-height sight');
   await page.getByRole('button', { name: 'Calculate trajectory' }).click();
@@ -73,7 +73,8 @@ test('zero values recalculate, invalid fields are identified, and short coverage
   await expect(page.getByRole('button', { name: '+ Save to comparison', exact: true })).toBeDisabled();
   await page.locator('#range-max').fill('1000');
   await page.locator('#range-step').focus();
-  await expect(page.locator('#solution-table tbody tr').last()).toContainText('outside calculated coverage');
+  await expect(page.locator('#range-status')).toContainText('recalculated');
+  await expect(page.locator('#solution-table tbody tr').last()).not.toContainText('outside calculated coverage');
   await page.locator('#range-step').fill('0');
   await page.locator('h1').click();
   await expect(page.locator('#range-error')).toBeVisible();
@@ -129,6 +130,10 @@ test('mobile layout, model dialog, keyboard controls, and safe names', async ({ 
   await expect(page.locator('#solution-table img')).toHaveCount(0);
   await page.locator('#load-name').focus();
   await page.keyboard.press('Tab');
+  // WebKit's default keyboard navigation skips buttons; other engines stop
+  // on the new picker button before the first numerical input.
+  await expect(page.locator(':focus')).toHaveAttribute('id', /^(open-bullet-database|mass)$/);
+  if (await page.locator(':focus').getAttribute('id') === 'open-bullet-database') await page.keyboard.press('Tab');
   await expect(page.locator('#mass')).toBeFocused();
   await page.screenshot({ path: info.outputPath('mobile.png'), fullPage: true });
 });

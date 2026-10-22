@@ -2,7 +2,7 @@
 
 Implemented 2026-10-21, following the [original plan](implementation-plan.md).
 The frontend and solver remain independent; the application is a static build
-with calculation workers and session-only saved results.
+with calculation workers and local workspace persistence.
 
 ## Review findings addressed
 
@@ -116,10 +116,8 @@ before uploading the production bundle.
 
 ## Deliberate scope boundaries
 
-Session memory is the persistence mechanism. Refreshing clears saved solutions.
-There is no projectile database, export/import or backend. Increasing the display
-window reformats existing coverage; recalculating and saving makes a longer
-solution. Energy searches may independently calculate further with the same saved
+Saved libraries and previews persist locally in IndexedDB (localStorage fallback); refreshing restores them.
+The WilsonKinetics projectile database is bundled locally. There is no export/import or backend. Changing physical distance-window values recalculates saved trajectories and previews as a worker batch, preserving resolved angles and card metadata. Energy searches may independently calculate further with the same saved
 bore angle. Optimized point-blank results are saved as a new solution.
 
 The model retains approximate crosswind deflection and has no atmosphere,
@@ -228,3 +226,96 @@ The workflow keeps its existing supported hosted runner and action versions.
 Local verification used Node 24.22.1: all 45 numerical/domain tests, TypeScript
 checking and the production build passed. All 54 production browser workflows
 passed across Chromium, Firefox and WebKit, including offline file startup.
+
+## WilsonKinetics projectile catalog
+
+User-requested integration uses the WilsonKinetics CSV at commit
+`c3d69d364bafb2664507ffc41b4bac7b3e1a1d81`. The source snapshot, MIT notice and
+provenance are under `src/data/wilson/`. Attribution names Reese Wilson / Wilson
+Armament Bureau and retains Copyright (c) 2026 Wilson Kinetics. The picker and
+model notes link the source; the full MIT text is embedded in the HTML and
+included in `public/THIRD_PARTY_NOTICES.txt` for distribution.
+
+The raw source matches the upstream Git blob byte for byte. Five empty records
+are omitted from the 5,686 selectable bullets; duplicate records retain separate
+row IDs. The CSV reader is independent of the browser and supports UTF-8 BOM,
+CRLF, quoted fields, doubled quotes and quoted newlines. Tests pin both SHA-256
+and upstream Git blob SHA.
+
+Both editors share one native dialog with text search, manufacturer and diameter
+filters, a bounded native result list, explicit G1/G7 selection, and a preview of
+mass, diameter and both source coefficients. Mass/diameter are converted to SI
+at ingestion. Applying copies primitives into the draft, clears a stale preview
+and preserves velocity, sight/zero settings and saved results. Missing or invalid
+BCs (including the source G1 `443` record) clear the previous coefficient and
+require manual entry. No BC-model conversion, guessed decimal correction or
+muzzle-velocity estimate is performed.
+
+The pinned CSV is bundled through Vite's raw import. No runtime fetch, CDN,
+backend or automatic upstream update is introduced; the isolated copied HTML
+also contains the catalog and its full license notice.
+
+Verification under Node 24.22.1: all 50 numerical/domain/data tests passed;
+TypeScript checking and the production build passed; all 63 browser workflows
+passed across Chromium, Firefox and WebKit. The suite covers both editors,
+explicit G7 selection, mixed-unit mass conversion, preserved velocity and saved
+results, missing/invalid source BCs, search/filtering, keyboard dismissal, mobile
+layout and copied standalone HTML running offline. The desktop picker screenshot
+was inspected. The browser keyboard-order test accounts for WebKit's default
+button-skipping behavior; Escape consistently dismisses the picker even when
+its search field has text.
+
+## Persistent workspace, editing and distance updates
+
+`workspace-state.ts` defines and validates schema-1 snapshots of trajectory and
+maximum-range libraries, calculated previews, unit preferences, distance window,
+active calculator source and edit targets. `workspace-storage.ts` stores one
+atomic IndexedDB record, with a localStorage fallback where IndexedDB is
+unavailable. Writes are serialized/coalesced so the latest snapshot wins. Full,
+unrounded numerical results are retained; localStorage's codec preserves inactive
+NaN fields. A fallback snapshot can migrate to IndexedDB when it becomes available.
+
+Restore validates active scenario values, units, IDs, finite/coherent point
+sequences and bounded record sizes. Restored solution data is cloned and frozen.
+Unknown/corrupt data is left untouched and autosave pauses until the user chooses
+to replace it. Storage/quota failures report an error and leave the current tab
+usable; “saved” is shown only after transaction completion. Local storage scope is
+browser/profile/origin dependent, including browser-specific `file://` behavior.
+This is not cross-device sync; concurrent tabs use last-completed workspace writes.
+
+Both libraries expose explicit edit/calculate/overwrite actions. Overwrites keep
+the card ID, color, line style, visibility and order. The shared `card-order.ts`
+handles native grip drag/drop, touch pointer drops and keyboard moves; tables,
+overlays and source lists follow the same array order. Deletion and visibility
+changes are persisted, including deliberately empty libraries.
+
+Changing From/To/Table step sends a bounded worker batch for every saved solution
+and any trajectory preview. It uses saved input snapshots and resolved angles,
+not the current draft or a new zero/angle search. Results and the new view commit
+together; cancellation/errors keep the old view and data. Request IDs reject
+superseded worker replies. Rename/reorder changes during the batch retain their
+live metadata, deleted cards are not resurrected, and additions/overwrites are
+disabled while the batch runs. Calculator outputs are invalidated. Unit changes
+only reformat physical values and do not launch a batch.
+
+Maximum-range search was removed from the trajectory editor at the user's request.
+Old maximum-angle snapshots remain readable; loading one into that editor selects
+manual angle with its resolved bore elevation. The dedicated maximum-range mode
+adds a “Safe distance · modelled” summary/table field and triangle plot markers:
+first impact or first threshold event, whichever occurs earlier, or zero for
+energy already at/below threshold at the muzzle. Ground-impact and subsequent
+upward energy crossings remain visible. This display boundary is not a certified
+real-world safety perimeter.
+
+Verification for persistence/reordering/overwrite/distance/safe-distance changes:
+all 55 numerical/domain/data/state tests passed; TypeScript and the production
+build passed; all 81 browser workflows passed in Chromium, Firefox and WebKit.
+New browser cases cover native drag/drop, keyboard moves, metadata-preserving
+overwrites in both libraries, restored previews/units/order/selection, deliberate
+empty libraries, latest-distance-edit wins, cancellation and injected batch
+failure, localStorage fallback, preservation/replacement of unreadable data,
+quota-write failure, and safe-distance impact/threshold/muzzle cases. Copied
+standalone HTML restores its locally saved workspace while offline. Existing
+mixed-unit, keyboard and responsive-layout checks passed; mobile workbench and
+maximum-range safe-distance screenshots were inspected. Touch pointer handling is
+implemented, but physical touchscreen dragging was not separately exercised.

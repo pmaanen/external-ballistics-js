@@ -33,9 +33,22 @@ test('downloaded production build works offline as a standalone local file', asy
     await expect(page.locator('#form-status')).toContainText('Trajectory ready');
     await page.getByRole('button', { name: '+ Save to comparison', exact: true }).click();
     await expect(page.locator('#solution-count')).toHaveText('2');
+    await page.locator('#open-bullet-database').click();
+    await page.locator('#bullet-search').fill('berger 130 hybrid');
+    await page.locator('#bullet-results').selectOption({ label: 'Berger · AR Hybrid OTM 26195 · 130 gr · 0.264 in' });
+    await page.locator('#bullet-bc-model').selectOption('G7');
+    await page.locator('.database-license summary').click();
+    await expect(page.locator('.database-license pre')).toContainText('Copyright (c) 2026 Wilson Kinetics');
+    await page.locator('#bullet-apply').click();
+    await expect(page.locator('#bc')).toHaveValue('0.291');
     await page.getByRole('button', { name: 'Maximum range', exact: true }).click();
     await page.locator('#max-calculate').click();
     await expect(page.locator('#max-status')).toContainText('flight complete');
+    await expect(page.locator('#max-summary-table tbody tr')).toHaveCount(1);
+    await expect(page.locator('#workspace-status')).toHaveAttribute('data-state', 'saved');
+    await page.reload();
+    await expect(page.locator('#form-status')).toContainText('restored');
+    await expect(page.locator('#maximum-range-mode')).toBeVisible();
     await expect(page.locator('#max-summary-table tbody tr')).toHaveCount(1);
     expect(remoteRequests).toEqual([]);
   } finally {

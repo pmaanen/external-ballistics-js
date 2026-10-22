@@ -48,14 +48,58 @@ startup instructions instead of remaining blank when its scripts cannot load.
    All visible loads are sampled at those exact distances. The table includes
    cumulative flight time in seconds. A dash means undefined or unavailable.
 
-The distance window changes the display; it does not extend saved calculations.
-To extend a load's coverage, load it into the editor and calculate/save it again
-with a larger maximum distance. Shorter solutions remain missing beyond their
-actual end. Editing a draft does not change saved results.
+Changing **From**, **To**, or **Table step** recalculates all saved trajectories,
+including hidden cards and the current preview, out to the new maximum distance.
+Their saved bore angles, inputs, names, order, visibility and colors are preserved.
+Updates are applied together when the worker finishes. Cancelling or a failed run
+keeps the previous window and calculations. Solver limits can still shorten a
+trajectory; values beyond its actual coverage remain missing. Changing only a
+display unit preserves the physical window without recalculating.
 
-Solutions are held in **this tab's memory**. Refreshing clears them. The first
-version intentionally does not include browser persistence, file import/export,
-or a projectile database.
+## Saved workspace and editing
+
+Both solution libraries and calculated previews are **saved locally on this
+device**, along with card order, visibility, units, distance window and calculator
+source selection. The page reports **Workspace saved on this device** after the
+write completes. Reloading restores that workspace; deleting every card keeps an
+empty library instead of recreating the startup reference.
+
+Storage uses IndexedDB with a localStorage fallback where necessary. Data belongs
+to this browser/profile and site origin; `file://` storage availability and scope
+can depend on the browser and file location. It is not a cloud sync or export.
+Storage failures are shown explicitly while calculations remain usable in memory.
+Unreadable or newer-format data is preserved: saving pauses until you explicitly
+choose **Save this workspace instead**.
+
+- **Reorder:** drag the card grip, including by touch, or focus it and use arrow
+  keys / Home / End. Plots, table columns and source lists follow card order.
+- **Overwrite:** use a card's **Edit** action, change inputs and calculate. Choose
+  **Overwrite [name]** to replace that card while keeping its identity, color,
+  visibility and position, or **Save to comparison** to add a separate solution.
+  Maximum-range cards have the same edit/calculate/overwrite workflow.
+- Calculator outputs are cleared when their source is overwritten or trajectories
+  are recalculated. Saved PBR solutions retain their resolved angle.
+
+## WilsonKinetics bullet database
+
+Choose **Choose from bullet database** in either the trajectory or maximum-range
+editor. Search 5,686 records by bullet name, manufacturer, diameter or grain
+weight, with separate manufacturer and diameter filters. Diameter is shown in
+inches and millimeters; mass is copied in your chosen form units.
+
+Select a bullet and its listed **G1 or G7 BC**, then choose **Use bullet**. This
+fills the name, mass and matching drag-model/BC pair. Muzzle velocity and sight
+settings remain yours to enter. No model conversion or muzzle-velocity estimate
+is made. Missing or unsupported BCs require manual entry and clear the previous
+coefficient. Existing saved solutions remain independent.
+
+The database is from [WilsonKinetics](https://github.com/ReeseWilsonGD/WilsonKinetics),
+developed by **Reese Wilson / Wilson Armament Bureau**. **Copyright (c) 2026 Wilson
+Kinetics**, used under the [MIT License](src/data/wilson/LICENSE). The picker,
+model notes and bundled third-party notices credit the source. The full MIT
+notice is embedded in the standalone HTML as well as retained with the source.
+The pinned [snapshot and provenance](src/data/wilson/README.md) are included locally;
+search and selection work offline without contacting GitHub.
 
 ## Aiming modes and zero height
 
@@ -69,13 +113,11 @@ Choose **Aiming mode** in the trajectory editor:
 - **Disable zeroing · manual angle:** enter bore elevation relative to the sight
   line (−45° to +45°). Shooting angle tilts that sight line. The disabled zero
   range and height fields are not used or validated.
-- **Disable zeroing · optimum ground-range angle:** searches the complete flight
-  to first ground impact for the maximum-range angle, using a configurable muzzle
-  height. This uses flat ground, calm wind and a level reference; choosing this
-  mode sets shooting angle and wind speed to zero and disables them. The preview
-  displays the calculated bore elevation. The trajectory workbench still plots
-  its requested distance and reports its solver coverage limits; use **Maximum
-  range** mode for complete ground-impact comparisons.
+
+Maximum-range angle search is available exclusively in **Maximum range** mode.
+Trajectory provides zero-at-range/height and manual bore elevation. Older saved
+maximum-angle trajectories can be viewed; editing loads their resolved angle as
+a manual angle, without running a maximum-range search on this screen.
 
 Saved trajectories retain the mode and resolved angle. Energy searches extend
 that same angle rather than re-zeroing the solution.
@@ -122,7 +164,11 @@ that load are not used.
 **Calculate maximum range** searches launch angles from 0° to 90° and refines the
 best angle. It reports horizontal ground range, launch angle, impact energy and
 time, and the first downward energy crossing on that same maximum-range flight.
-The charts show height above ground and kinetic energy through impact. A separate
+**Safe distance · modelled** is the earlier of first ground impact and the
+energy-threshold event on that maximum-range flight. It is zero if energy is
+already at or below the threshold at the muzzle. Tables name the limiting event;
+triangle markers show it on both plots. The charts show height above ground and
+kinetic energy through impact. A separate
 table includes every upward and downward crossing: falling bullets can gain
 energy again during descent. Already below the threshold at the muzzle and no
 crossing before impact are explicit outcomes.
@@ -130,7 +176,7 @@ crossing before impact are explicit outcomes.
 **Save range comparison** keeps an independent snapshot. Repeat for different
 bullets and use checkboxes to overlay their flights or remove comparisons. Metric,
 imperial and individual unit overrides preserve physical values. These comparisons
-are separate from the trajectory library and are cleared on refresh.
+are separate from the trajectory library and are restored locally on reload.
 
 This is modelled first-impact reach, **not a certified danger radius**. It excludes
 terrain, ricochets, atmospheric variability and uncertainty. Crossing an energy

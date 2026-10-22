@@ -111,15 +111,50 @@ establish a safe radius. Preserve explicit errors on incomplete integrations.
 
 ## Aiming and calculator source contracts
 
-`Scenario.aimMode` selects zero-at-range/height, manual bore elevation, or optimum
-maximum-ground-range angle. Zero height is signed path relative to the sight
-line at zero range; convert it to classic `yIntercept` at the SI boundary.
+`Scenario.aimMode` retains zero-at-range/height, manual bore elevation and the
+legacy maximum-ground-range tag. The trajectory UI offers only zeroing and manual
+angle; maximum-range optimization belongs exclusively to its dedicated mode.
+Zero height is signed path relative to the sight line at zero range; convert it to classic `yIntercept` at the SI boundary.
 Disabled zero inputs are ignored in explicit-angle modes. Optimum-angle selection
-uses calm wind, flat ground and a level reference with configured muzzle height;
-`configuredTrajectory` orchestrates it before the distance-based workbench solve.
+uses calm wind, flat ground and a level reference with configured muzzle height.
+Older saved maximum-angle records load their resolved angle into the trajectory
+editor in manual mode; do not restore the removed maximum-angle UI option.
 Do not hide the workbench's subsequent coverage limits.
 
 Preserve the user's calculator source when new loads are saved. PBR reports path
 at a separate chosen reference zero range, with explicit missing coverage, and
 saves the resolved angle in manual mode. Do not replace that range with the far
 zero or silently re-zero a saved optimized result.
+
+## WilsonKinetics bullet database
+
+`src/data/wilson/` contains a pinned, unmodified MIT-licensed CSV from WilsonKinetics
+and its license/provenance. Credit Reese Wilson / Wilson Armament Bureau and
+Copyright (c) 2026 Wilson Kinetics in the UI and distributed notices. Keep the
+full MIT text embedded for standalone HTML, not only in a separate file.
+
+The shared bullet picker copies name, SI mass and an explicitly listed G1/G7 BC
+pair into either draft. Never guess muzzle velocity or convert G1/G7 BCs. Missing,
+zero or invalid source BCs clear the old coefficient and require manual entry;
+do not silently repair the source G1 value 443. Preserve the raw CSV and duplicate
+rows; update checksums/provenance deliberately when refreshing the snapshot.
+
+## Persistent workspace and card operations
+
+Save both solution libraries and calculated previews locally, including units,
+card identity/order/visibility/style, calculator source and distance window.
+`workspace-state.ts` validates versioned snapshots; `workspace-storage.ts` stores
+an atomic IndexedDB record with a localStorage fallback. Do not silently erase
+unreadable data or claim a save succeeded after a quota/permission error.
+
+Card grips support native drag/drop, touch pointers and keyboard reordering.
+Explicit overwrites preserve ID, position, style and visibility. Recalculate all
+saved trajectories (including hidden cards) and previews when physical distance
+window values change. Use each solution's resolved angle; apply worker results
+as a batch and reject superseded work. Cancel/failure preserves the previous
+view and data. Unit-only changes must not cause a solve.
+
+In maximum-range mode, “Safe distance · modelled” is the earlier impact or first
+threshold event; it is zero if at/below the threshold at the muzzle. Keep impact
+and upward descent crossings visible and do not imply this label certifies an
+actual safe perimeter.

@@ -32,7 +32,7 @@ test('calculator source is selectable and saving another load preserves selectio
   expect(await page.locator('#energy-result .result-lead').textContent()).not.toBe(slowDistance);
 });
 
-test('zero height, manual angle and optimum ground-range angle work in the production worker', async ({ page }) => {
+test('zero height and manual angle work; maximum range is separate', async ({ page }) => {
   await page.getByRole('button', { name: 'Metric', exact: true }).click();
   await page.locator('#zero').fill('100');
   await page.locator('#zero-height').fill('5');
@@ -49,20 +49,16 @@ test('zero height, manual angle and optimum ground-range angle work in the produ
   await page.locator('#load-form button[type="submit"]').click();
   await expect(page.locator('#form-status')).toContainText('Trajectory ready');
   await expect(page.locator('#preview-banner')).toContainText('2.0000° bore');
-  await page.locator('#inclination').fill('10');
-  await page.locator('#wind').fill('5');
-  await page.locator('#aim-mode').selectOption('maximum-range');
-  await expect(page.locator('#wind')).toBeDisabled();
-  await expect(page.locator('#inclination')).toHaveValue('0');
-  await expect(page.locator('#launch-height')).toHaveValue('1.5');
-  await page.locator('#load-form button[type="submit"]').click();
-  await expect(page.locator('#form-status')).toContainText('Trajectory ready');
-  await expect(page.locator('#preview-banner')).toContainText(/33\.\d+° bore/);
+  await expect(page.locator('#aim-mode option[value="maximum-range"]')).toHaveCount(0);
   await page.locator('#save-solution').click();
   await page.locator('#calculator-solution').selectOption({ index: 1 });
-  await expect(page.locator('#source-summary')).toContainText('optimum ground-range angle');
+  await expect(page.locator('#source-summary')).toContainText('manual angle');
   await page.locator('#calculate-energy').click();
   await expect(page.locator('#energy-status')).toContainText('Calculated from');
+  await page.getByRole('button', { name: 'Maximum range', exact: true }).click();
+  await page.locator('#max-calculate').click();
+  await expect(page.locator('#max-status')).toContainText('flight complete');
+  await expect(page.locator('#max-preview-summary')).toContainText('Safe distance');
 });
 
 test('PBR reports zero height at chosen range and saved editor preserves the optimized angle', async ({ page }, info) => {

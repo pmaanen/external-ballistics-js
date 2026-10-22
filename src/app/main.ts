@@ -1,4 +1,8 @@
 import './styles.css';
+import { bindCardOrder, dragGrip } from './card-order';
+import { WorkspaceStorage } from './workspace-storage';
+import type { WorkspaceState } from './workspace-state';
+import { chooseBullet, bulletDatabaseCredit } from './bullet-picker';
 import { MaximumRangeMode } from './maximum-range-mode';
 import { defaultScenario, distanceGrid, dragModels, ScenarioValidationError, validateScenario } from '../ballistics/model';
 import type { Scenario, Solution } from '../ballistics/model';
@@ -20,6 +24,13 @@ let prefs: UnitPreferences = { ...presets.imperial };
 let draft: Scenario = { ...defaultScenario };
 let preview: Solution | null = null;
 let activeId = '';
+let editingId = '';
+let hydrated = false, persistenceEnabled = true;
+let currentMode: 'trajectory' | 'maximum-range' = 'trajectory';
+const persistence = new WorkspaceStorage((state, message) => {
+  const element = document.getElementById('workspace-status');
+  if (element) { element.textContent = message; element.dataset.state = state; element.classList.toggle('error', state === 'error'); }
+});
 let energy: EnergyResult | null = null;
 let pbr: PointBlankResult | null = null;
 let pbrSavedId: string | null = null;
@@ -42,7 +53,6 @@ const fields: Field[] = [
   { key: 'bc', id: 'bc', label: 'Ballistic coefficient', suffix: 'BC' },
   { key: 'zeroHeightM', id: 'zero-height', label: 'Zero height', pref: 'zeroHeight', choices: ['in', 'cm', 'mm'] },
   { key: 'boreAngleDeg', id: 'bore-angle', label: 'Bore elevation angle', suffix: 'deg' },
-  { key: 'launchHeightM', id: 'launch-height', label: 'Muzzle height for optimum angle', pref: 'height', choices: ['ft', 'm'] },
   { key: 'zeroRangeM', id: 'zero', label: 'Zero range', pref: 'zero', choices: ['yd', 'm'] },
   { key: 'sightHeightM', id: 'sight', label: 'Sight height over bore', pref: 'sight', choices: ['in', 'mm', 'cm'] },
   { key: 'inclinationDeg', id: 'inclination', label: 'Shooting angle', suffix: 'deg' },
@@ -67,34 +77,34 @@ $('#app').innerHTML = `
     <div class="unit-preset"><span id="unit-state">Imperial units</span><div class="segmented" role="group" aria-label="Unit preset"><button data-preset="imperial" aria-pressed="true">Imperial</button><button data-preset="metric" aria-pressed="false">Metric</button></div></div>
   </section>
   <div class="mode-switch segmented" role="group" aria-label="Calculation mode"><button data-mode="trajectory" aria-pressed="true">Trajectory</button><button data-mode="maximum-range" aria-pressed="false">Maximum range</button></div>
+  <div class="workspace-storage"><p id="workspace-status" class="status-message" role="status" aria-live="polite">Restoring workspace…</p><button id="workspace-retry" class="text-button" hidden>Save this workspace instead</button></div>
   <section id="maximum-range-mode" aria-label="Maximum-range study" hidden></section>
   <div class="workspace">
     <aside class="editor"><form id="load-form" novalidate>
       <div class="card-title"><div><span class="eyebrow">01 / CONFIGURE</span><h2>Your load</h2></div><span class="small-badge">6 DRAG MODELS</span></div>
       <div class="field name-field"><label for="load-name">Solution name</label><input id="load-name" data-field="name" type="text" maxlength="100" required autocomplete="off" /></div>
-      <fieldset><legend>Projectile</legend><div class="two-fields">${field('massKg')}${field('muzzleMps')}</div>
+      <fieldset><legend>Projectile</legend><button type="button" id="open-bullet-database" class="button secondary database-open">Choose from bullet database</button><div class="two-fields">${field('massKg')}${field('muzzleMps')}</div>
         <div class="two-fields"><div class="field"><label for="drag-model">Drag model</label><select id="drag-model" data-field="dragModel">${options(dragModels)}</select></div>${field('bc')}</div>
       </fieldset>
-      <fieldset><legend>Sight &amp; aiming</legend><div class="field"><label for="aim-mode">Aiming mode</label><select id="aim-mode"><option value="zero">Zero at range and height</option><option value="angle">Disable zeroing · manual angle</option><option value="maximum-range">Disable zeroing · optimum ground-range angle</option></select></div>
+      <fieldset><legend>Sight &amp; aiming</legend><div class="field"><label for="aim-mode">Aiming mode</label><select id="aim-mode"><option value="zero">Zero at range and height</option><option value="angle">Disable zeroing · manual angle</option></select></div>
         ${field('sightHeightM')}<div id="zero-settings"><div class="two-fields">${field('zeroRangeM')}${field('zeroHeightM')}</div><p class="field-hint">Zero height is impact above (+) or below (−) the sight line at the zero range, in level, calm sight-in.</p></div>
         <div id="angle-settings" hidden>${field('boreAngleDeg')}<p class="field-hint">Bore elevation relative to the sight line, −45° to 45°. Shooting angle tilts the sight line.</p></div>
-        <div id="optimum-settings" hidden>${field('launchHeightM')}<p class="field-hint">Maximum ground-range angle, searched to first impact on flat ground in calm wind. Uses a level sight reference. The plot retains the workbench's distance and model limits.</p></div>
         ${field('inclinationDeg')}</fieldset>
       <fieldset><legend>Wind</legend><div class="two-fields">${field('windMps')}${field('windDeg')}</div>
         <div class="wind-key"><span>0° head</span><span>90° from right</span><span>180° tail</span></div>
       </fieldset>
       <div class="form-actions"><button type="submit" class="button primary" data-task="solve">Calculate trajectory ${arrow}</button>
-        <button type="button" id="save-solution" class="button secondary" disabled>+ Save to comparison</button></div>
+        <button type="button" id="save-solution" class="button secondary" disabled>+ Save to comparison</button><button type="button" id="overwrite-solution" class="button secondary" disabled>Overwrite edited solution</button></div>
       <p id="form-status" class="status-message" role="status" aria-live="polite">Preparing your reference load…</p>
-    </form><div class="editor-footer"><span class="status-dot"></span>In-memory workspace. Refreshing clears your loads.</div></aside>
+    </form><div class="editor-footer"><span class="status-dot"></span>Solutions and previews are saved locally on this device.</div></aside>
     <div class="results" id="results">
       <section class="comparison-section"><div class="section-heading"><div><span class="eyebrow">02 / COMPARE</span><h2>Solution library <span id="solution-count" class="count-pill">0</span></h2></div><span class="subtle">Toggle a load to overlay it</span></div>
-        <div id="saved-solutions" class="solution-list"></div><div id="preview-banner" class="preview-banner" hidden></div>
+        <p class="reorder-hint">Drag a card grip to reorder, or focus it and use arrow keys.</p><div id="saved-solutions" class="solution-list"></div><div id="preview-banner" class="preview-banner" hidden></div>
       </section>
-      <section class="range-panel" aria-label="Display range"><div class="range-heading"><span class="eyebrow">DISTANCE WINDOW</span><span class="subtle">Saved coverage stays fixed</span></div>
+      <section class="range-panel" aria-label="Display range"><div class="range-heading"><span class="eyebrow">DISTANCE WINDOW</span><span class="subtle">Saved solutions recalculate automatically</span></div>
         <div class="range-fields"><div class="field"><label for="range-min">From</label><input id="range-min" type="number" step="any" /></div><div class="field"><label for="range-max">To</label><input id="range-max" type="number" step="any" /></div>
           <div class="field"><label for="range-step">Table step</label><input id="range-step" type="number" step="any" /></div><div class="field"><label for="range-unit">Unit</label><select id="range-unit" data-output-unit="range">${options(['yd', 'm'])}</select></div>
-        </div><p id="range-error" class="status-message error" role="alert" hidden></p>
+        </div><p id="range-status" class="status-message" role="status" aria-live="polite"></p><p id="range-error" class="status-message error" role="alert" hidden></p>
         <div class="output-units"><span>Display units</span>${(['path', 'speed', 'energy', 'angle'] as const).map(key => `<label>${({ path: 'Path / drift', speed: 'Speed', energy: 'Energy', angle: 'Correction' })[key]}<select aria-label="${key} display unit" data-output-unit="${key}">${options(({ path: ['in', 'cm', 'mm'], speed: ['ft/s', 'm/s'], energy: ['ft·lbf', 'J'], angle: ['MOA', 'mrad'] })[key])}</select></label>`).join('')}</div>
       </section>
       <section aria-label="Ballistic plots" class="plots-section"><div class="chart-card trajectory-card"><div class="chart-heading"><div><span class="eyebrow">THE FLIGHT PATH</span><h2>Trajectory</h2></div><span id="plot-window" class="chart-note"></span></div><div id="chart-legend" class="chart-legend"></div>
@@ -122,19 +132,24 @@ $('#app').innerHTML = `
   <footer class="site-footer"><span>${logo} VECTOR <span class="footer-divider">/</span> EXTERNAL BALLISTICS</span><span>GNU Ballistics Library · GPL-2.0 · <button class="text-button" id="footer-notes">Model &amp; license notes</button></span></footer>
 </main>
 <div id="task-bar" class="task-bar" hidden><span class="spinner"></span><span id="task-label">Calculating…</span><button id="cancel-task" class="text-button">Cancel</button></div>
-<dialog id="notes-dialog"><button id="close-notes" class="dialog-close" aria-label="Close model notes">×</button><span class="eyebrow">UNDER THE MODEL</span><h2>A transparent calculation.</h2><p>Vector uses the GNU Ballistics drag laws G1, G2, G5, G6, G7 and G8 with bounded numerical integration. A ballistic coefficient belongs to its drag model; switching models does not convert the coefficient.</p><p>Zero range describes a level, calm sight-in. Shooting angle and wind apply to the subsequent shot. Distances follow the line-of-sight axis, rather than horizontal ground distance. Path is measured from that sight line.</p><p>Wind direction is where wind comes from: 0° headwind, 90° from the right, 180° tailwind and 270° from the left. Positive drift is leftward. Corrections point opposite displacement. Crosswind drift uses the original flight-time-lag approximation.</p><p>Atmospheric corrections, spin drift, Coriolis and a full vector-wind model are not included. Point-blank range optimizes the vertical corridor. If the muzzle starts below the corridor, the near entry is reported explicitly.</p><p>Solutions are stored in this tab's memory. Refreshing clears them. Changing display units preserves their physical values; increasing the distance window does not extend existing saved calculations.</p><p>This project is distributed under the GNU GPL version 2, without warranty. Original GNU Ballistics routines are attributed to Derek Yates; the JavaScript port and dependency notices are included in the repository. <a href="./LICENSE.txt" target="_blank" rel="noopener">Read the license</a>.</p></dialog>`;
+<dialog id="notes-dialog"><button id="close-notes" class="dialog-close" aria-label="Close model notes">×</button><span class="eyebrow">UNDER THE MODEL</span><h2>A transparent calculation.</h2><p>Vector uses the GNU Ballistics drag laws G1, G2, G5, G6, G7 and G8 with bounded numerical integration. A ballistic coefficient belongs to its drag model; switching models does not convert the coefficient.</p><p>Zero range describes a level, calm sight-in. Shooting angle and wind apply to the subsequent shot. Distances follow the line-of-sight axis, rather than horizontal ground distance. Path is measured from that sight line.</p><p>Wind direction is where wind comes from: 0° headwind, 90° from the right, 180° tailwind and 270° from the left. Positive drift is leftward. Corrections point opposite displacement. Crosswind drift uses the original flight-time-lag approximation.</p><p>Atmospheric corrections, spin drift, Coriolis and a full vector-wind model are not included. Point-blank range optimizes the vertical corridor. If the muzzle starts below the corridor, the near entry is reported explicitly.</p><p>Solutions and calculated previews are stored locally on this device. Changing display units preserves physical values. Distance-window edits recalculate every saved trajectory at its resolved angle; model limits can still shorten coverage.</p><p>Bullet library: ${bulletDatabaseCredit}. The picker includes the full MIT notice, also preserved in <a href="./THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">third-party notices</a>.</p><p>This project is distributed under the GNU GPL version 2, without warranty. Original GNU Ballistics routines are attributed to Derek Yates; the JavaScript port and dependency notices are included in the repository. <a href="./LICENSE.txt" target="_blank" rel="noopener">Read the license</a>.</p></dialog>`;
 
+$('#open-bullet-database').addEventListener('click', () => chooseBullet(draft.dragModel, selection => {
+  draft = { ...draft, ...selection }; renderInputs(); dirty();
+  setStatus('form-status', Number.isFinite(selection.bc) ? 'Bullet loaded from WilsonKinetics. Check your muzzle velocity, then calculate.' : 'Bullet loaded from WilsonKinetics. Enter its BC and check your muzzle velocity before calculating.', !Number.isFinite(selection.bc));
+}));
 const plots = new Plots();
 const maximumRangeMode = new MaximumRangeMode($('#maximum-range-mode'), {
-  preferences: () => prefs, savedLoads: () => store.items,
+  preferences: () => prefs, savedLoads: () => store.items, changed: () => persistWorkspace(),
   setPreferences: next => { prefs = { ...next }; renderInputs(); renderRangeInputs(); renderCalculatorInputs(); render(); },
 });
 function switchMode(mode: string): void {
+  currentMode = mode === 'maximum-range' ? 'maximum-range' : 'trajectory';
   $<HTMLAnchorElement>('.skip-link').href = mode === 'maximum-range' ? '#max-range-form' : '#load-form';
   $('.workspace').hidden = mode !== 'trajectory';
   $('#maximum-range-mode').hidden = mode !== 'maximum-range';
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
-  maximumRangeMode.sync(); maximumRangeMode.resize();
+  maximumRangeMode.sync(); maximumRangeMode.resize(); persistWorkspace();
 }
 document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode!)));
 document.querySelectorAll('nav a').forEach(a => a.addEventListener('click', () => switchMode('trajectory')));
@@ -153,11 +168,11 @@ function updateUnitsState(): void {
 }
 function renderAimMode(): void {
   $<HTMLSelectElement>('#aim-mode').value = draft.aimMode;
-  for (const [id, mode] of [['zero-settings', 'zero'], ['angle-settings', 'angle'], ['optimum-settings', 'maximum-range']]) {
+  for (const [id, mode] of [['zero-settings', 'zero'], ['angle-settings', 'angle']]) {
     const section = $(`#${id}`); section.hidden = draft.aimMode !== mode;
     section.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach(i => i.disabled = Boolean(section.hidden));
   }
-  for (const id of ['inclination', 'wind', 'direction']) $<HTMLInputElement>(`#${id}`).disabled = draft.aimMode === 'maximum-range';
+
 }
 function renderInputs(): void {
   $<HTMLInputElement>('#load-name').value = draft.name;
@@ -192,11 +207,11 @@ function series(): Series[] {
 }
 function renderSaved(): void {
   $('#solution-count').textContent = String(store.items.length);
-  $('#saved-solutions').innerHTML = store.items.length ? store.items.map(item => `<div class="saved-solution${item.visible ? '' : ' is-hidden'}" style="--series-color:${item.color}">
+  $('#saved-solutions').innerHTML = store.items.length ? store.items.map(item => `<div class="saved-solution${item.visible ? '' : ' is-hidden'}" data-card-id="${item.id}" style="--series-color:${item.color}">${dragGrip(item.id, item.name)}
     <label class="visibility-toggle"><input type="checkbox" data-visible="${item.id}" ${item.visible ? 'checked' : ''} aria-label="Show ${escapeHtml(item.name)}" /><span></span></label>
     <div class="saved-body"><input class="solution-name" data-rename="${item.id}" value="${escapeHtml(item.name)}" maxlength="100" aria-label="Name for ${escapeHtml(item.name)}" />
       <span class="solution-meta">${item.result.inputs.dragModel} · BC ${item.result.inputs.bc} · ${format(item.result.inputs.massKg, prefs.mass, 1)} ${prefs.mass} · ${format(item.result.maxDistanceM, prefs.range, 0)} ${prefs.range}${item.result.trajectory.termination !== 'requested-range' ? ' · model limit' : ''}</span></div>
-    <div class="solution-actions"><button data-action="edit" data-id="${item.id}" aria-label="Edit ${escapeHtml(item.name)}" title="Load into editor">↗</button><button data-action="duplicate" data-id="${item.id}" aria-label="Duplicate ${escapeHtml(item.name)}" title="Duplicate">⧉</button><button data-action="remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.name)}" title="Remove">×</button></div></div>`).join('') : '<div class="empty-library">Your comparison starts here. Calculate a trajectory, then save it.</div>';
+    <div class="solution-actions"><button data-action="edit" data-id="${item.id}" aria-label="Edit ${escapeHtml(item.name)}" title="Load into editor">↗</button><button ${busyKind === 'recalculate' ? 'disabled' : ''} data-action="duplicate" data-id="${item.id}" aria-label="Duplicate ${escapeHtml(item.name)}" title="Duplicate">⧉</button><button data-action="remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.name)}" title="Remove">×</button></div></div>`).join('') : '<div class="empty-library">Your comparison starts here. Calculate a trajectory, then save it.</div>';
   const banner = $('#preview-banner'); banner.hidden = !preview;
   if (preview) banner.textContent = `Unsaved preview · ${preview.inputs.name} · ${format(preview.zeroAngleDeg, undefined, 4)}° bore elevation — save it to keep this calculation.`;
   const select = $<HTMLSelectElement>('#calculator-solution');
@@ -225,23 +240,26 @@ function renderCalculatorResults(): void {
   } else $('#energy-result').innerHTML = '<div class="result-empty"><span>—</span>Your threshold distance will appear here.</div>';
 }
 function render(): void {
-  renderSaved(); renderCalculatorResults(); updateUnitsState(); maximumRangeMode.sync();
+  renderSaved(); renderCalculatorResults(); updateUnitsState(); maximumRangeMode.sync(); updateOverwrite();
   const visible = series();
   $('#chart-legend').innerHTML = visible.map(s => `<span><i style="background:${s.color}"></i>${escapeHtml(s.name)}</span>`).join('') || '<span>Show or calculate a solution to plot it.</span>';
   $('#plot-window').textContent = `${format(view.min, prefs.range, 0)}–${format(view.max, prefs.range, 0)} ${prefs.range}`;
   plots.render(visible, view, prefs, { pbr, energy }); renderTable(visible, view, prefs);
   $<HTMLButtonElement>('#save-solution').disabled = !preview || !!busyKind;
+  persistWorkspace();
 }
 function setBusy(kind: Task['kind'] | null): void {
   busyKind = kind;
   document.querySelectorAll<HTMLButtonElement>('[data-task]').forEach(b => b.disabled = !!kind);
   $('#task-bar').hidden = !kind;
   $('#activity').textContent = kind ? 'CALCULATING LOCALLY' : 'COMPUTED ON YOUR DEVICE';
-  $('#task-label').textContent = kind === 'pbr' ? 'Optimizing point-blank range…' : kind === 'energy' ? 'Finding energy crossing…' : 'Calculating trajectory…';
+  $('#task-label').textContent = kind === 'recalculate' ? 'Recalculating saved trajectories…' : kind === 'pbr' ? 'Optimizing point-blank range…' : kind === 'energy' ? 'Finding energy crossing…' : 'Calculating trajectory…';
   $<HTMLButtonElement>('#save-solution').disabled = !preview || !!kind;
-  $<HTMLButtonElement>('#save-pbr').disabled = !!pbrSavedId || !!kind;
+  $<HTMLButtonElement>('#save-pbr').disabled = !!pbrSavedId || !!kind; updateOverwrite();
+  document.querySelectorAll<HTMLButtonElement>('[data-action="duplicate"]').forEach(b => b.disabled = kind === 'recalculate');
 }
-async function run(task: Task, statusId: string, done: (result: TaskResult) => void): Promise<void> {
+async function run(task: Task, statusId: string, done: (result: TaskResult) => void, failed?: (message: string) => void): Promise<void> {
+  if (busyKind === 'recalculate' && task.kind !== 'recalculate') { setStatus('range-status', 'Distance recalculation replaced by another calculation. Previous window retained.', true); renderRangeInputs(); }
   const id = ++operation;
   setBusy(task.kind); setStatus(statusId, 'Calculating…');
   try {
@@ -249,7 +267,7 @@ async function run(task: Task, statusId: string, done: (result: TaskResult) => v
     if (id !== operation) return;
     done(result);
   } catch (error) {
-    if (id === operation) setStatus(statusId, error instanceof Error ? error.message : 'Calculation failed.', true);
+    if (id === operation) { const message = error instanceof Error ? error.message : 'Calculation failed.'; setStatus(statusId, message, true); failed?.(message); }
   } finally { if (id === operation) { setBusy(null); render(); } }
 }
 function dirty(): void {
@@ -257,7 +275,7 @@ function dirty(): void {
   const hadPreview = !!preview; preview = null;
   $<HTMLButtonElement>('#save-solution').disabled = true;
   setStatus('form-status', 'Draft changed. Calculate to create a new preview.');
-  if (hadPreview) render();
+  updateOverwrite(); if (hadPreview) render();
 }
 function clearCalculators(): void {
   if (busyKind === 'pbr' || busyKind === 'energy') worker.cancel();
@@ -266,14 +284,13 @@ function clearCalculators(): void {
 }
 function savePreview(): void {
   if (!preview) return;
-  const item = store.add(preview); preview = null;
+  const item = store.add(preview); preview = null; editingId = '';
   if (!activeId) { activeId = item.id; pbrZeroRangeM = item.result.inputs.zeroRangeM; clearCalculators(); }
   setStatus('form-status', 'Saved to comparison. Edit this draft to explore another load.'); render();
 }
 
 $('#aim-mode').addEventListener('change', () => {
   draft.aimMode = $<HTMLSelectElement>('#aim-mode').value as Scenario['aimMode'];
-  if (draft.aimMode === 'maximum-range') { draft.inclinationDeg = 0; draft.windMps = 0; }
   renderInputs(); dirty();
 });
 $('#load-form').addEventListener('input', event => {
@@ -314,6 +331,13 @@ $('#load-form').addEventListener('submit', event => {
   }
 });
 $('#save-solution').addEventListener('click', savePreview);
+$('#overwrite-solution').addEventListener('click', () => {
+  if (!preview || !editingId || busyKind || !store.items.some(item => item.id === editingId)) return;
+  store.replace(editingId, preview); preview = null;
+  if (activeId === editingId) clearCalculators();
+  if (pbrSavedId === editingId) { pbr = null; pbrSavedId = null; }
+  setStatus('form-status', 'Solution overwritten. Its position, color and visibility were preserved.'); render();
+});
 document.querySelectorAll<HTMLSelectElement>('[data-input-unit]').forEach(select => select.addEventListener('change', () => {
   const key = select.dataset.inputUnit as keyof UnitPreferences;
   const f = fields.find(f => f.pref === key)!;
@@ -329,13 +353,29 @@ document.querySelectorAll<HTMLSelectElement>('[data-output-unit]').forEach(selec
   prefs[select.dataset.outputUnit as keyof UnitPreferences] = select.value as Unit;
   renderRangeInputs(); render();
 }));
+async function recalculateView(next: ViewRange): Promise<void> {
+  const oldPreview = preview;
+  clearCalculators();
+  const entries = store.items.map(item => ({ id: `saved:${item.id}`, inputs: { ...item.result.inputs, name: item.name }, angleDeg: item.result.zeroAngleDeg }));
+  if (oldPreview) entries.push({ id: 'preview', inputs: { ...oldPreview.inputs }, angleDeg: oldPreview.zeroAngleDeg });
+  await run({ kind: 'recalculate', entries, distanceM: next.max }, 'range-status', result => {
+    if (result.kind !== 'recalculate') return;
+    store.replaceBatch(result.results.filter(r => r.id.startsWith('saved:')).map(r => ({ ...r, id: r.id.slice(6) })));
+    if (preview === oldPreview) preview = result.results.find(r => r.id === 'preview')?.result ?? null;
+    view = next; if (!document.activeElement?.matches('#range-min, #range-max, #range-step')) renderRangeInputs();
+    const limited = result.results.filter(r => r.result.trajectory.termination !== 'requested-range').length;
+    setStatus('range-status', limited ? `Recalculated. ${limited} trajectory(s) stop at a model limit; missing coverage is shown explicitly.` : 'Saved trajectories recalculated for the distance window.');
+  }, message => { if (!document.activeElement?.matches('#range-min, #range-max, #range-step')) renderRangeInputs(); setStatus('range-status', `${message} Previous distance window and calculations retained.`, true); });
+}
 for (const key of ['min', 'max', 'step']) $(`#range-${key}`).addEventListener('change', () => {
   try {
     const next = { min: toSI(inputNumber('range-min'), prefs.range), max: toSI(inputNumber('range-max'), prefs.range), step: toSI(inputNumber('range-step'), prefs.range) };
-    distanceGrid(next.min, next.max, next.step); view = next;
-    $('#range-error').hidden = true; render();
-  } catch (error) { $('#range-error').hidden = false; $('#range-error').textContent = (error as Error).message; }
+    distanceGrid(next.min, next.max, next.step);
+    $('#range-error').hidden = true;
+    if (next.min !== view.min || next.max !== view.max || next.step !== view.step || busyKind === 'recalculate') void recalculateView(next);
+  } catch (error) { $('#range-error').hidden = false; $('#range-error').textContent = (error as Error).message; if (busyKind === 'recalculate') worker.cancel('Invalid distance edit; previous calculations retained.'); }
 });
+bindCardOrder($('#saved-solutions'), (id, target, after) => { store.move(id, target, after); render(); });
 $('#saved-solutions').addEventListener('change', event => {
   const target = event.target as HTMLInputElement;
   try {
@@ -349,12 +389,13 @@ $('#saved-solutions').addEventListener('click', event => {
   if (!button) return;
   const id = button.dataset.id!, item = store.get(id);
   if (button.dataset.action === 'edit') {
-    draft = { ...item.result.inputs, name: item.name }; renderInputs(); dirty();
-    setStatus('form-status', 'Loaded into the editor. Calculate to make a new solution.');
+    editingId = item.id; draft = editableInputs(item.result, item.name); renderInputs(); dirty();
+    setStatus('form-status', 'Editing saved solution. Calculate, then overwrite it or save a new solution.');
     $<HTMLInputElement>('#load-name').focus();
   } else if (button.dataset.action === 'duplicate') store.duplicate(id);
   else {
     store.remove(id);
+    if (editingId === id) editingId = '';
     if (activeId === id) { activeId = store.items[0]?.id ?? ''; pbrZeroRangeM = store.items[0]?.result.inputs.zeroRangeM ?? defaultScenario.zeroRangeM; clearCalculators(); renderCalculatorInputs(); }
     if (pbrSavedId === id) { pbr = null; pbrSavedId = null; }
   }
@@ -413,9 +454,46 @@ $('#close-notes').addEventListener('click', () => dialog.close());
 dialog.addEventListener('click', event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close(); } });
 window.addEventListener('pagehide', () => { worker.cancel(); plots.destroy(); maximumRangeMode.destroy(); });
 
+function editableInputs(result: Solution, name = result.inputs.name): Scenario {
+  return { ...result.inputs, name, ...(result.inputs.aimMode === 'maximum-range' ? { aimMode: 'angle' as const, boreAngleDeg: result.zeroAngleDeg } : {}) };
+}
+function updateOverwrite(): void {
+  const item = store.items.find(s => s.id === editingId);
+  $<HTMLButtonElement>('#overwrite-solution').disabled = !item || !preview || !!busyKind;
+  $('#overwrite-solution').textContent = item ? `Overwrite ${item.name}` : 'Overwrite edited solution';
+}
+function persistWorkspace(): void {
+  if (!hydrated || !persistenceEnabled) return;
+  const state: WorkspaceState = { schema: 1, solutions: store.snapshot(), preview, editingId,
+    activeId, preferences: { ...prefs }, view: { ...view }, mode: currentMode, maximum: maximumRangeMode.snapshot() };
+  persistence.save(state);
+}
+$('#workspace-retry').addEventListener('click', () => { persistenceEnabled = true; $('#workspace-retry').hidden = true; persistWorkspace(); });
+async function initializeWorkspace(): Promise<void> {
+  let saved: WorkspaceState | null = null;
+  try { saved = await persistence.load(); }
+  catch (error) {
+    persistenceEnabled = false;
+    setStatus('workspace-status', `Could not restore local data: ${(error as Error).message} Local saving is paused to preserve that data.`, true);
+    $('#workspace-status').dataset.state = 'error'; $('#workspace-retry').hidden = false;
+  }
+  if (saved) {
+    store.restore(saved.solutions); prefs = { ...saved.preferences }; view = { ...saved.view };
+    activeId = saved.activeId; editingId = saved.editingId; preview = saved.preview;
+    const selected = preview ?? store.items.find(s => s.id === editingId)?.result ?? store.items.find(s => s.id === activeId)?.result;
+    if (selected) draft = editableInputs(selected);
+    pbrZeroRangeM = store.items.find(s => s.id === activeId)?.result.inputs.zeroRangeM ?? defaultScenario.zeroRangeM;
+    thresholdUnit = prefs.energy; diameterUnit = prefs.path; searchUnit = prefs.range;
+    renderInputs(); maximumRangeMode.sync(); maximumRangeMode.restore(saved.maximum); switchMode(saved.mode);
+    setStatus('form-status', 'Local workspace restored.');
+  }
+  hydrated = true;
+  renderInputs(); renderRangeInputs(); renderCalculatorInputs(); render();
+  if (!saved) void run({ kind: 'solve', scenario: { ...draft }, distanceM: view.max }, 'form-status', result => {
+    if (result.kind !== 'solve') return;
+    activeId = store.add(result.solution).id;
+    setStatus('form-status', 'Reference load ready. Change a parameter to explore another flight.');
+  });
+}
 renderInputs(); renderRangeInputs(); renderCalculatorInputs(); render();
-void run({ kind: 'solve', scenario: { ...draft }, distanceM: view.max }, 'form-status', result => {
-  if (result.kind !== 'solve') return;
-  activeId = store.add(result.solution).id;
-  setStatus('form-status', 'Reference load ready. Change a parameter to explore another flight.');
-});
+void initializeWorkspace();
