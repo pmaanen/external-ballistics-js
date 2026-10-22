@@ -3,7 +3,7 @@
 Versions follow Semantic Versioning. The `0.x` series is initial development;
 minor releases may include breaking changes, which are listed explicitly.
 
-## Unreleased
+## 0.2.1 — 2026-10-22
 
 ### Fixed
 

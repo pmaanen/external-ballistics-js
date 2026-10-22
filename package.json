@@ -1,6 +1,6 @@
 {
   "name": "external-ballistics-js",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "license": "GPL-2.0",
