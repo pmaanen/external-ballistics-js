@@ -1,4 +1,5 @@
 import './styles.css';
+import { MaximumRangeMode } from './maximum-range-mode';
 import { defaultScenario, distanceGrid, dragModels, ScenarioValidationError, validateScenario } from '../ballistics/model';
 import type { Scenario, Solution } from '../ballistics/model';
 import { format, fromSI, presets, toSI } from '../ballistics/units';
@@ -23,6 +24,7 @@ let energy: EnergyResult | null = null;
 let pbr: PointBlankResult | null = null;
 let pbrSavedId: string | null = null;
 let thresholdJ = 1500, diameterM = .15, searchM = 2000;
+let pbrZeroRangeM = defaultScenario.zeroRangeM;
 let thresholdUnit: Unit = 'ft·lbf', diameterUnit: Unit = 'in', searchUnit: Unit = 'yd';
 let view: ViewRange = { min: 0, max: toSI(800, 'yd'), step: toSI(50, 'yd') };
 let busyKind: Task['kind'] | null = null;
@@ -38,6 +40,9 @@ const fields: Field[] = [
   { key: 'massKg', id: 'mass', label: 'Projectile mass', pref: 'mass', choices: ['gr', 'g'] },
   { key: 'muzzleMps', id: 'muzzle', label: 'Muzzle velocity', pref: 'muzzle', choices: ['ft/s', 'm/s'] },
   { key: 'bc', id: 'bc', label: 'Ballistic coefficient', suffix: 'BC' },
+  { key: 'zeroHeightM', id: 'zero-height', label: 'Zero height', pref: 'zeroHeight', choices: ['in', 'cm', 'mm'] },
+  { key: 'boreAngleDeg', id: 'bore-angle', label: 'Bore elevation angle', suffix: 'deg' },
+  { key: 'launchHeightM', id: 'launch-height', label: 'Muzzle height for optimum angle', pref: 'height', choices: ['ft', 'm'] },
   { key: 'zeroRangeM', id: 'zero', label: 'Zero range', pref: 'zero', choices: ['yd', 'm'] },
   { key: 'sightHeightM', id: 'sight', label: 'Sight height over bore', pref: 'sight', choices: ['in', 'mm', 'cm'] },
   { key: 'inclinationDeg', id: 'inclination', label: 'Shooting angle', suffix: 'deg' },
@@ -61,6 +66,8 @@ $('#app').innerHTML = `
   <section class="page-intro"><div><div class="eyebrow">EXTERNAL BALLISTICS / GNU LIBRARY</div><h1>The flight, in full.</h1><p>A clearer view of every load. Build, calculate, and compare.</p></div>
     <div class="unit-preset"><span id="unit-state">Imperial units</span><div class="segmented" role="group" aria-label="Unit preset"><button data-preset="imperial" aria-pressed="true">Imperial</button><button data-preset="metric" aria-pressed="false">Metric</button></div></div>
   </section>
+  <div class="mode-switch segmented" role="group" aria-label="Calculation mode"><button data-mode="trajectory" aria-pressed="true">Trajectory</button><button data-mode="maximum-range" aria-pressed="false">Maximum range</button></div>
+  <section id="maximum-range-mode" aria-label="Maximum-range study" hidden></section>
   <div class="workspace">
     <aside class="editor"><form id="load-form" novalidate>
       <div class="card-title"><div><span class="eyebrow">01 / CONFIGURE</span><h2>Your load</h2></div><span class="small-badge">6 DRAG MODELS</span></div>
@@ -68,7 +75,11 @@ $('#app').innerHTML = `
       <fieldset><legend>Projectile</legend><div class="two-fields">${field('massKg')}${field('muzzleMps')}</div>
         <div class="two-fields"><div class="field"><label for="drag-model">Drag model</label><select id="drag-model" data-field="dragModel">${options(dragModels)}</select></div>${field('bc')}</div>
       </fieldset>
-      <fieldset><legend>Sight &amp; zero</legend><div class="two-fields">${field('zeroRangeM')}${field('sightHeightM')}</div>${field('inclinationDeg')}<p class="field-hint">Zero is referenced to a level, calm sight-in.</p></fieldset>
+      <fieldset><legend>Sight &amp; aiming</legend><div class="field"><label for="aim-mode">Aiming mode</label><select id="aim-mode"><option value="zero">Zero at range and height</option><option value="angle">Disable zeroing · manual angle</option><option value="maximum-range">Disable zeroing · optimum ground-range angle</option></select></div>
+        ${field('sightHeightM')}<div id="zero-settings"><div class="two-fields">${field('zeroRangeM')}${field('zeroHeightM')}</div><p class="field-hint">Zero height is impact above (+) or below (−) the sight line at the zero range, in level, calm sight-in.</p></div>
+        <div id="angle-settings" hidden>${field('boreAngleDeg')}<p class="field-hint">Bore elevation relative to the sight line, −45° to 45°. Shooting angle tilts the sight line.</p></div>
+        <div id="optimum-settings" hidden>${field('launchHeightM')}<p class="field-hint">Maximum ground-range angle, searched to first impact on flat ground in calm wind. Uses a level sight reference. The plot retains the workbench's distance and model limits.</p></div>
+        ${field('inclinationDeg')}</fieldset>
       <fieldset><legend>Wind</legend><div class="two-fields">${field('windMps')}${field('windDeg')}</div>
         <div class="wind-key"><span>0° head</span><span>90° from right</span><span>180° tail</span></div>
       </fieldset>
@@ -92,9 +103,10 @@ $('#app').innerHTML = `
           <div class="chart-card"><div class="chart-heading"><div><span class="eyebrow">DOWNRANGE PERFORMANCE</span><h3>Energy</h3></div><span class="chart-symbol">↘</span></div><div class="small-chart-space"><canvas id="energy-chart" role="img" aria-label="Energy comparison; exact values are available in the results table."></canvas></div></div></div>
       </section>
       <section id="calculators" class="calculator-section"><div class="section-heading"><div><span class="eyebrow">03 / EXPLORE</span><h2>Go beyond the zero</h2></div></div>
-        <div class="calculator-source"><div class="field"><label for="calculator-solution">Use saved solution</label><select id="calculator-solution"></select></div><div class="field"><label for="search-distance">Search up to</label><div class="number-field"><input id="search-distance" type="number" step="any" /><select id="search-unit" aria-label="Calculator search distance unit">${options(['yd', 'm'])}</select></div></div></div>
+        <div class="calculator-source"><div class="field"><label for="calculator-solution">Calculator source · energy &amp; PBR</label><select id="calculator-solution"></select></div><div class="field"><label for="search-distance">Search up to</label><div class="number-field"><input id="search-distance" type="number" step="any" /><select id="search-unit" aria-label="Calculator search distance unit">${options(['yd', 'm'])}</select></div></div></div>
         <p id="source-summary" class="source-summary"></p>
         <div class="calculator-grid"><article class="calculator-card"><div class="calculator-title"><span class="tool-icon">◎</span><div><h3>Optimum point-blank range</h3><p>Find a zero that makes the most of your target zone.</p></div></div>
+          <div class="field pbr-reference"><label for="pbr-zero-range">PBR reference zero range</label><div class="number-field"><input id="pbr-zero-range" type="number" step="any" /><select id="pbr-zero-unit" aria-label="PBR reference zero range unit">${options(['yd', 'm'])}</select></div></div>
           <label for="target-diameter">Target-zone diameter</label><div class="calculator-input"><div class="number-field"><input id="target-diameter" type="number" step="any" /><select id="diameter-unit" aria-label="Target diameter unit">${options(['in', 'cm', 'mm'])}</select></div><button id="calculate-pbr" data-task="pbr" class="button secondary">Optimize ${arrow}</button></div>
           <p class="field-hint" id="radius-hint"></p><p id="pbr-status" class="status-message" role="status"></p><div id="pbr-result" class="calculator-result"></div><button id="save-pbr" class="button subtle-button" hidden>+ Add optimized load to comparison</button>
         </article><article class="calculator-card"><div class="calculator-title"><span class="tool-icon">ϟ</span><div><h3>Distance to energy threshold</h3><p>See where retained energy meets your chosen floor.</p></div></div>
@@ -113,6 +125,19 @@ $('#app').innerHTML = `
 <dialog id="notes-dialog"><button id="close-notes" class="dialog-close" aria-label="Close model notes">×</button><span class="eyebrow">UNDER THE MODEL</span><h2>A transparent calculation.</h2><p>Vector uses the GNU Ballistics drag laws G1, G2, G5, G6, G7 and G8 with bounded numerical integration. A ballistic coefficient belongs to its drag model; switching models does not convert the coefficient.</p><p>Zero range describes a level, calm sight-in. Shooting angle and wind apply to the subsequent shot. Distances follow the line-of-sight axis, rather than horizontal ground distance. Path is measured from that sight line.</p><p>Wind direction is where wind comes from: 0° headwind, 90° from the right, 180° tailwind and 270° from the left. Positive drift is leftward. Corrections point opposite displacement. Crosswind drift uses the original flight-time-lag approximation.</p><p>Atmospheric corrections, spin drift, Coriolis and a full vector-wind model are not included. Point-blank range optimizes the vertical corridor. If the muzzle starts below the corridor, the near entry is reported explicitly.</p><p>Solutions are stored in this tab's memory. Refreshing clears them. Changing display units preserves their physical values; increasing the distance window does not extend existing saved calculations.</p><p>This project is distributed under the GNU GPL version 2, without warranty. Original GNU Ballistics routines are attributed to Derek Yates; the JavaScript port and dependency notices are included in the repository. <a href="./LICENSE.txt" target="_blank" rel="noopener">Read the license</a>.</p></dialog>`;
 
 const plots = new Plots();
+const maximumRangeMode = new MaximumRangeMode($('#maximum-range-mode'), {
+  preferences: () => prefs, savedLoads: () => store.items,
+  setPreferences: next => { prefs = { ...next }; renderInputs(); renderRangeInputs(); renderCalculatorInputs(); render(); },
+});
+function switchMode(mode: string): void {
+  $<HTMLAnchorElement>('.skip-link').href = mode === 'maximum-range' ? '#max-range-form' : '#load-form';
+  $('.workspace').hidden = mode !== 'trajectory';
+  $('#maximum-range-mode').hidden = mode !== 'maximum-range';
+  document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  maximumRangeMode.sync(); maximumRangeMode.resize();
+}
+document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode!)));
+document.querySelectorAll('nav a').forEach(a => a.addEventListener('click', () => switchMode('trajectory')));
 const inputNumber = (id: string) => {
   const input = $<HTMLInputElement>(`#${id}`);
   return input.value.trim() ? Number(input.value) : NaN;
@@ -126,6 +151,14 @@ function updateUnitsState(): void {
   $('#unit-state').textContent = active ? `${active === 'metric' ? 'Metric' : 'Imperial'} units` : 'Mixed units';
   document.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.preset === active)));
 }
+function renderAimMode(): void {
+  $<HTMLSelectElement>('#aim-mode').value = draft.aimMode;
+  for (const [id, mode] of [['zero-settings', 'zero'], ['angle-settings', 'angle'], ['optimum-settings', 'maximum-range']]) {
+    const section = $(`#${id}`); section.hidden = draft.aimMode !== mode;
+    section.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach(i => i.disabled = Boolean(section.hidden));
+  }
+  for (const id of ['inclination', 'wind', 'direction']) $<HTMLInputElement>(`#${id}`).disabled = draft.aimMode === 'maximum-range';
+}
 function renderInputs(): void {
   $<HTMLInputElement>('#load-name').value = draft.name;
   $<HTMLSelectElement>('#drag-model').value = draft.dragModel;
@@ -134,13 +167,15 @@ function renderInputs(): void {
     $<HTMLInputElement>(`#${f.id}`).value = editable(f.pref ? fromSI(value, prefs[f.pref]) : value);
     if (f.pref) $<HTMLSelectElement>(`[data-input-unit="${f.pref}"]`).value = prefs[f.pref];
   }
-  updateUnitsState();
+  renderAimMode(); updateUnitsState();
 }
 function renderRangeInputs(): void {
   for (const key of ['min', 'max', 'step'] as const) $<HTMLInputElement>(`#range-${key}`).value = editable(fromSI(view[key], prefs.range));
   document.querySelectorAll<HTMLSelectElement>('[data-output-unit]').forEach(select => select.value = prefs[select.dataset.outputUnit as keyof UnitPreferences]);
 }
 function renderCalculatorInputs(): void {
+  $<HTMLInputElement>('#pbr-zero-range').value = editable(fromSI(pbrZeroRangeM, prefs.zero));
+  $<HTMLSelectElement>('#pbr-zero-unit').value = prefs.zero;
   $<HTMLInputElement>('#threshold-energy').value = editable(fromSI(thresholdJ, thresholdUnit));
   $<HTMLSelectElement>('#threshold-unit').value = thresholdUnit;
   $<HTMLInputElement>('#target-diameter').value = editable(fromSI(diameterM, diameterUnit));
@@ -163,12 +198,12 @@ function renderSaved(): void {
       <span class="solution-meta">${item.result.inputs.dragModel} · BC ${item.result.inputs.bc} · ${format(item.result.inputs.massKg, prefs.mass, 1)} ${prefs.mass} · ${format(item.result.maxDistanceM, prefs.range, 0)} ${prefs.range}${item.result.trajectory.termination !== 'requested-range' ? ' · model limit' : ''}</span></div>
     <div class="solution-actions"><button data-action="edit" data-id="${item.id}" aria-label="Edit ${escapeHtml(item.name)}" title="Load into editor">↗</button><button data-action="duplicate" data-id="${item.id}" aria-label="Duplicate ${escapeHtml(item.name)}" title="Duplicate">⧉</button><button data-action="remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.name)}" title="Remove">×</button></div></div>`).join('') : '<div class="empty-library">Your comparison starts here. Calculate a trajectory, then save it.</div>';
   const banner = $('#preview-banner'); banner.hidden = !preview;
-  if (preview) banner.textContent = `Unsaved preview · ${preview.inputs.name} — save it to keep this calculation.`;
+  if (preview) banner.textContent = `Unsaved preview · ${preview.inputs.name} · ${format(preview.zeroAngleDeg, undefined, 4)}° bore elevation — save it to keep this calculation.`;
   const select = $<HTMLSelectElement>('#calculator-solution');
   select.innerHTML = store.items.length ? store.items.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('') : '<option value="">Save a solution first</option>';
   select.value = activeId;
   const item = store.items.find(s => s.id === activeId);
-  $('#source-summary').textContent = item ? `${item.result.inputs.dragModel} / BC ${item.result.inputs.bc} · ${format(item.result.inputs.muzzleMps, prefs.speed, 0)} ${prefs.speed} · ${format(item.result.inputs.zeroRangeM, prefs.range, 1)} ${prefs.range} zero · ${item.result.inputs.inclinationDeg}° shot` : 'Save a solution to use the calculators.';
+  $('#source-summary').textContent = item ? `${item.result.inputs.dragModel} / BC ${item.result.inputs.bc} · ${format(item.result.inputs.muzzleMps, prefs.speed, 0)} ${prefs.speed} · ${item.result.inputs.aimMode === 'zero' ? `${format(item.result.inputs.zeroRangeM, prefs.range, 1)} ${prefs.range} zero · ` : ''}${item.result.inputs.inclinationDeg}° shot · ${item.result.inputs.aimMode === 'zero' ? `${format(item.result.inputs.zeroHeightM, prefs.zeroHeight)} ${prefs.zeroHeight} zero height` : `${format(item.result.zeroAngleDeg, undefined, 4)}° bore / ${item.result.inputs.aimMode === 'angle' ? 'manual angle' : 'optimum ground-range angle'}`}` : 'Save a solution to use the calculators.';
 }
 function resultMetric(label: string, value: string): string { return `<div><span>${label}</span><strong>${value}</strong></div>`; }
 function renderCalculatorResults(): void {
@@ -176,11 +211,12 @@ function renderCalculatorResults(): void {
   $('#save-pbr').textContent = pbrSavedId ? '✓ Optimized load saved' : '+ Add optimized load to comparison';
   if (pbr) {
     $('#pbr-result').innerHTML = `<div class="result-lead">${format(pbr.farExit.distanceM, prefs.range, 1)}<span>${prefs.range}</span></div><p class="result-label">Maximum point-blank range</p><div class="result-grid">
+      ${resultMetric(`Zero height at ${format(pbr.zeroRangeM, prefs.zero, 1)} ${prefs.zero}`, pbr.zeroAtRange ? `${format(pbr.zeroAtRange.pathM, prefs.zeroHeight)} ${prefs.zeroHeight}` : 'Outside verified coverage')}
       ${resultMetric('Near entry', `${format(pbr.nearEntry.distanceM, prefs.range, 1)} ${prefs.range}`)}${resultMetric('Far zero', `${format(pbr.farZero?.distanceM ?? null, prefs.range, 1)} ${prefs.range}`)}
       ${resultMetric('Near zero', `${format(pbr.nearZero?.distanceM ?? null, prefs.range, 1)} ${prefs.range}`)}${resultMetric('Peak height', `${format(pbr.apex.pathM, prefs.path)} ${prefs.path}`)}
       ${resultMetric('Peak distance', `${format(pbr.apex.distanceM, prefs.range, 1)} ${prefs.range}`)}${resultMetric('Bore elevation', `${format(pbr.solution.zeroAngleDeg, undefined, 4)}°`)}
       ${resultMetric('Time at exit', `${format(pbr.farExit.timeS, undefined, 3)} s`)}${resultMetric('Energy at exit', `${format(pbr.farExit.energyJ, prefs.energy, 0)} ${prefs.energy}`)}</div>
-      <p class="result-note">${pbr.muzzleCovered ? 'Within the vertical corridor from muzzle to far exit.' : 'Muzzle starts below the corridor. Coverage begins at the reported near entry.'}</p>`;
+      <p class="result-note">Zero height is relative to the sight line under the selected shot conditions. ${pbr.muzzleCovered ? 'Within the vertical corridor from muzzle to far exit.' : 'Muzzle starts below the corridor. Coverage begins at the reported near entry.'}</p>`;
   } else $('#pbr-result').innerHTML = '<div class="result-empty"><span>—</span>Your optimized range will appear here.</div>';
   if (energy?.status === 'crossing') {
     $('#energy-result').innerHTML = `<div class="result-lead energy-value">${format(energy.point.distanceM, prefs.range, 1)}<span>${prefs.range}</span></div><p class="result-label">Distance to ${format(energy.thresholdJ, prefs.energy, 0)} ${prefs.energy}</p><div class="result-grid">${resultMetric('Flight time', `${format(energy.point.timeS, undefined, 3)} s`)}${resultMetric('Velocity', `${format(energy.point.speedMps, prefs.speed, 1)} ${prefs.speed}`)}${resultMetric('Energy', `${format(energy.point.energyJ, prefs.energy, 1)} ${prefs.energy}`)}</div>`;
@@ -189,7 +225,7 @@ function renderCalculatorResults(): void {
   } else $('#energy-result').innerHTML = '<div class="result-empty"><span>—</span>Your threshold distance will appear here.</div>';
 }
 function render(): void {
-  renderSaved(); renderCalculatorResults(); updateUnitsState();
+  renderSaved(); renderCalculatorResults(); updateUnitsState(); maximumRangeMode.sync();
   const visible = series();
   $('#chart-legend').innerHTML = visible.map(s => `<span><i style="background:${s.color}"></i>${escapeHtml(s.name)}</span>`).join('') || '<span>Show or calculate a solution to plot it.</span>';
   $('#plot-window').textContent = `${format(view.min, prefs.range, 0)}–${format(view.max, prefs.range, 0)} ${prefs.range}`;
@@ -230,10 +266,16 @@ function clearCalculators(): void {
 }
 function savePreview(): void {
   if (!preview) return;
-  const item = store.add(preview); activeId = item.id; preview = null;
-  clearCalculators(); setStatus('form-status', 'Saved to comparison. Edit this draft to explore another load.'); render();
+  const item = store.add(preview); preview = null;
+  if (!activeId) { activeId = item.id; pbrZeroRangeM = item.result.inputs.zeroRangeM; clearCalculators(); }
+  setStatus('form-status', 'Saved to comparison. Edit this draft to explore another load.'); render();
 }
 
+$('#aim-mode').addEventListener('change', () => {
+  draft.aimMode = $<HTMLSelectElement>('#aim-mode').value as Scenario['aimMode'];
+  if (draft.aimMode === 'maximum-range') { draft.inclinationDeg = 0; draft.windMps = 0; }
+  renderInputs(); dirty();
+});
 $('#load-form').addEventListener('input', event => {
   const target = event.target as HTMLInputElement;
   const key = target.dataset.field as keyof Scenario | undefined;
@@ -264,7 +306,7 @@ $('#load-form').addEventListener('submit', event => {
   } catch (error) {
     setStatus('form-status', (error as Error).message, true);
     if (error instanceof ScenarioValidationError) {
-      const field = $<HTMLInputElement>(`[data-field="${error.field}"]`);
+      const field = $<HTMLInputElement>(error.field === 'aimMode' ? '#aim-mode' : `[data-field="${error.field}"]`);
       field.setAttribute('aria-invalid', 'true');
       field.setAttribute('aria-describedby', 'form-status');
       field.focus();
@@ -276,7 +318,7 @@ document.querySelectorAll<HTMLSelectElement>('[data-input-unit]').forEach(select
   const key = select.dataset.inputUnit as keyof UnitPreferences;
   const f = fields.find(f => f.pref === key)!;
   if (!Number.isFinite(draft[f.key])) { select.value = prefs[key]; setStatus('form-status', 'Enter a valid value before changing its unit.', true); return; }
-  prefs[key] = select.value as Unit; renderInputs(); render();
+  prefs[key] = select.value as Unit; renderInputs(); renderCalculatorInputs(); render();
 }));
 document.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach(button => button.addEventListener('click', () => {
   prefs = { ...presets[button.dataset.preset as 'metric' | 'imperial'] };
@@ -313,23 +355,25 @@ $('#saved-solutions').addEventListener('click', event => {
   } else if (button.dataset.action === 'duplicate') store.duplicate(id);
   else {
     store.remove(id);
-    if (activeId === id) { activeId = store.items[0]?.id ?? ''; clearCalculators(); }
+    if (activeId === id) { activeId = store.items[0]?.id ?? ''; pbrZeroRangeM = store.items[0]?.result.inputs.zeroRangeM ?? defaultScenario.zeroRangeM; clearCalculators(); renderCalculatorInputs(); }
     if (pbrSavedId === id) { pbr = null; pbrSavedId = null; }
   }
   render();
 });
 $('#calculator-solution').addEventListener('change', event => {
-  activeId = (event.target as HTMLSelectElement).value; clearCalculators(); render();
+  activeId = (event.target as HTMLSelectElement).value; pbrZeroRangeM = store.get(activeId).result.inputs.zeroRangeM; clearCalculators(); renderCalculatorInputs(); render();
 });
-for (const id of ['threshold-energy', 'target-diameter', 'search-distance']) $(`#${id}`).addEventListener('input', () => {
+for (const id of ['threshold-energy', 'target-diameter', 'search-distance', 'pbr-zero-range']) $(`#${id}`).addEventListener('input', () => {
+  if (id === 'pbr-zero-range') { pbrZeroRangeM = toSI(inputNumber(id), prefs.zero); pbr = null; pbrSavedId = null; if (busyKind === 'pbr') worker.cancel(); }
   if (id === 'threshold-energy') { thresholdJ = toSI(inputNumber(id), thresholdUnit); energy = null; if (busyKind === 'energy') worker.cancel(); }
   if (id === 'target-diameter') { diameterM = toSI(inputNumber(id), diameterUnit); pbr = null; pbrSavedId = null; if (busyKind === 'pbr') worker.cancel(); }
   if (id === 'search-distance') { searchM = toSI(inputNumber(id), searchUnit); clearCalculators(); }
   $('#radius-hint').textContent = `Corridor: ±${format(diameterM / 2, diameterUnit)} ${diameterUnit} about the sight line.`;
   render();
 });
-for (const id of ['threshold-unit', 'diameter-unit', 'search-unit']) $(`#${id}`).addEventListener('change', event => {
+for (const id of ['threshold-unit', 'diameter-unit', 'search-unit', 'pbr-zero-unit']) $(`#${id}`).addEventListener('change', event => {
   const unit = (event.target as HTMLSelectElement).value as Unit;
+  if (id === 'pbr-zero-unit') { prefs.zero = unit; renderInputs(); render(); }
   if (id === 'threshold-unit') thresholdUnit = unit;
   if (id === 'diameter-unit') diameterUnit = unit;
   if (id === 'search-unit') searchUnit = unit;
@@ -355,7 +399,7 @@ $('#calculate-pbr').addEventListener('click', () => {
     const item = calculationSource();
     if (!Number.isFinite(diameterM) || diameterM <= 0) throw new Error('Enter a positive target diameter.');
     pbr = null; pbrSavedId = null;
-    void run({ kind: 'pbr', scenario: { ...item.result.inputs, name: item.name }, diameterM, distanceM: searchM }, 'pbr-status', result => {
+    void run({ kind: 'pbr', scenario: { ...item.result.inputs, name: item.name, zeroRangeM: pbrZeroRangeM }, diameterM, distanceM: searchM }, 'pbr-status', result => {
       if (result.kind === 'pbr') { pbr = result.result; setStatus('pbr-status', 'Optimum verified within the vertical corridor.'); }
     });
   } catch (error) { setStatus('pbr-status', (error as Error).message, true); }
@@ -367,7 +411,7 @@ $('#notes-button').addEventListener('click', () => dialog.showModal());
 $('#footer-notes').addEventListener('click', () => dialog.showModal());
 $('#close-notes').addEventListener('click', () => dialog.close());
 dialog.addEventListener('click', event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close(); } });
-window.addEventListener('pagehide', () => { worker.cancel(); plots.destroy(); });
+window.addEventListener('pagehide', () => { worker.cancel(); plots.destroy(); maximumRangeMode.destroy(); });
 
 renderInputs(); renderRangeInputs(); renderCalculatorInputs(); render();
 void run({ kind: 'solve', scenario: { ...draft }, distanceM: view.max }, 'form-status', result => {

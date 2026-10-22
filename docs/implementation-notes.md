@@ -126,3 +126,84 @@ The model retains approximate crosswind deflection and has no atmosphere,
 spin drift or Coriolis correction. The UI describes these limits and the
 line-of-sight distance/sign conventions. Numerical tests do not certify agreement
 with a particular firearm, ammunition lot or real-world trajectory.
+
+## Maximum-range study
+
+The dedicated mode uses calm wind and first impact on flat ground, as confirmed
+by the user, with configurable muzzle height (0–1,000 m). It takes only projectile
+name, mass, muzzle speed, drag model and BC; copying a trajectory load does not
+copy its sight, zero, inclination or wind into this calculation. Its coordinate
+system is horizontal distance and height above ground.
+
+`src/ballistics/flight.ts` uses adaptive time-based RK4 with step doubling and the
+existing GNU drag tables. SI drag acceleration is converted at the table boundary.
+It integrates upward and downward flight, independently of the legacy solver's
+forward-slope cutoff. Cubic Hermite interpolation refines first ground impact,
+apex and threshold events. A shallow launch from ground that rises and lands
+inside one step brackets impact after the apex, avoiding a false muzzle impact.
+Default integration limits are 600 s, 100,000 attempted steps and a 0.2 s maximum
+step. Errors and the existing worker watchdog reject incomplete calculations.
+
+`src/calculators/maximum-range.ts` scans 0–90° at 5° increments and applies a bounded
+golden-section refinement around the best scan point (0.0001° bracket tolerance).
+This assumes the best calm, flat-ground branch lies in that bracket; it is not
+a general global optimizer for arbitrary drag functions. The selected complete
+flight supplies every energy event and impact metric. Energy extrema split event
+brackets to catch descent re-entry as well as downward crossings. Angular and
+event search tolerances describe numerical refinement, not physical accuracy.
+
+New range comparisons own frozen snapshots independently of trajectory solutions
+and the editable form. Plot sampling leaves calculator and table data untouched.
+Shared unit preferences plus independent m/ft height controls preserve SI values.
+The interface explicitly distinguishes theoretical first-impact reach from a
+certified danger area: terrain, ricochets, atmosphere and uncertainty are outside
+this model, and an energy crossing is not a safe-distance boundary.
+
+Verification for this addition includes vacuum flight/optimum analytic identities,
+all six drag models and nearby-angle checks, integration-step refinement, steep
+and shallow ground flights, mass/energy separation, invalid and incomplete runs,
+energy rebound, saved comparison independence, mixed units, cancellation/restart,
+keyboard/mobile layout, and offline-file startup in the production worker bundle.
+
+Final verification: all 39 numerical/domain tests passed, the production build
+passed TypeScript checking, and all 45 browser workflows passed across Chromium,
+Firefox and WebKit. Desktop screenshots of the new comparison mode were inspected.
+Offline cases execute maximum-range calculations from an isolated copied HTML.
+
+## Aiming modes, calculator sources and PBR zero height
+
+Calculator selection is an explicit saved-solution ID. Saving a new trajectory
+keeps that ID and its current calculator results; selecting or deleting the source
+clears stale results. Both calculators share the visibly labelled source selector.
+
+Scenarios now contain `aimMode`, `zeroHeightM`, `boreAngleDeg` and `launchHeightM`.
+The SI adapter maps signed zero height to the classic `yIntercept` in inches;
+its existing ±100 in bound becomes ±2.54 m. Zero-height sign is relative to the
+sight line at the specified range. Manual mode uses explicit −45°…45° bore
+elevation relative to the sight line and bypasses disabled zero-input validation.
+`configuredTrajectory` orchestrates maximum-ground-range angle selection in the
+worker using the complete time-based engine. This mode requires calm wind and a
+level reference, enforced in validation; the UI sets wind/inclination to zero
+and disables them. Muzzle height for this reference search is configurable.
+
+The workbench's subsequent distance-based trajectory retains its existing model
+limits. It does not claim to cover ground impact; the separate Maximum range
+mode remains the full-impact comparison. Energy tasks retain the resolved angle
+from the selected solution, including PBR and optimum-range angle solutions.
+
+PBR has a separate reference zero-range input. Its result samples unrounded path
+at that distance, or reports missing coverage, without replacing the range with
+the far zero. Saved PBR inputs use manual mode and the optimized bore angle, with
+the chosen reference range and sampled height. This fixes their prior inability
+to reproduce the optimized angle reliably after loading into the editor. The
+reported zero height is under the chosen shot conditions; inclined/windy shots
+can differ from a level/calm sight-in at that same range and height.
+
+Verification for these changes: all 44 numerical/domain tests passed; the
+production build passed TypeScript checking; all 54 browser workflows passed in
+Chromium, Firefox and WebKit. Added cases verify source selection survives new
+saves, different selected loads produce different threshold distances, signed
+zero-height conversion, disabled-zero validation, optimum-angle worker execution,
+PBR reference height, saved-angle reproduction, and unavailable reference coverage.
+Offline standalone-HTML checks also exercise manual angle and PBR height output.
+The updated desktop PBR screenshot was inspected.

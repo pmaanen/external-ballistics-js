@@ -10,7 +10,7 @@ test('reference load, three charts, exact-distance table, and local assets', asy
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await expect(page).toHaveTitle('Vector — Ballistics Workbench');
-  await expect(page.locator('canvas')).toHaveCount(3);
+  await expect(page.locator('.workspace canvas')).toHaveCount(3);
   const rows = page.locator('#solution-table tbody tr');
   await expect(rows).toHaveCount(17);
   await expect(rows.first().locator('th')).toHaveText('0.00');

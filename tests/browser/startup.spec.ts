@@ -25,11 +25,18 @@ test('downloaded production build works offline as a standalone local file', asy
     await expect(page.locator('#energy-result .result-lead')).toBeVisible();
     await page.getByRole('button', { name: 'Optimize' }).click();
     await expect(page.locator('#pbr-status')).toContainText('Optimum verified');
+    await expect(page.locator('#pbr-result')).toContainText('Zero height at');
+    await page.locator('#aim-mode').selectOption('angle');
+    await page.locator('#bore-angle').fill('0.1');
     await page.locator('#muzzle').fill('850');
     await page.getByRole('button', { name: 'Calculate trajectory' }).click();
     await expect(page.locator('#form-status')).toContainText('Trajectory ready');
     await page.getByRole('button', { name: '+ Save to comparison', exact: true }).click();
     await expect(page.locator('#solution-count')).toHaveText('2');
+    await page.getByRole('button', { name: 'Maximum range', exact: true }).click();
+    await page.locator('#max-calculate').click();
+    await expect(page.locator('#max-status')).toContainText('flight complete');
+    await expect(page.locator('#max-summary-table tbody tr')).toHaveCount(1);
     expect(remoteRequests).toEqual([]);
   } finally {
     await test.info().attach('startup-errors', { body: JSON.stringify(errors, null, 2), contentType: 'application/json' });

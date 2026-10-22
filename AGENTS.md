@@ -98,3 +98,28 @@ not sufficient evidence when it contains an inherited bug.
 For UI work, verify keyboard access, field labels/errors, responsive charts and
 tables, mixed units, overlays, and time-to-distance. Keep runtime assets local;
 avoid unversioned CDN scripts. Record what was actually tested and any limits.
+
+## Maximum-range mode
+
+The user authorized first impact on flat ground with configurable muzzle height
+and calm wind. `src/ballistics/flight.ts` integrates in SI time to ground impact;
+`src/calculators/maximum-range.ts` searches launch angle and refines energy events.
+This mode uses horizontal ground distance and height above ground, separately
+from the trajectory workbench's sight-line coordinates and forward-slope limit.
+Report descent energy re-entry and impact energy; an energy crossing does not
+establish a safe radius. Preserve explicit errors on incomplete integrations.
+
+## Aiming and calculator source contracts
+
+`Scenario.aimMode` selects zero-at-range/height, manual bore elevation, or optimum
+maximum-ground-range angle. Zero height is signed path relative to the sight
+line at zero range; convert it to classic `yIntercept` at the SI boundary.
+Disabled zero inputs are ignored in explicit-angle modes. Optimum-angle selection
+uses calm wind, flat ground and a level reference with configured muzzle height;
+`configuredTrajectory` orchestrates it before the distance-based workbench solve.
+Do not hide the workbench's subsequent coverage limits.
+
+Preserve the user's calculator source when new loads are saved. PBR reports path
+at a separate chosen reference zero range, with explicit missing coverage, and
+saves the resolved angle in manual mode. Do not replace that range with the far
+zero or silently re-zero a saved optimized result.

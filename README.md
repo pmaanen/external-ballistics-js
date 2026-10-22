@@ -35,7 +35,7 @@ startup instructions instead of remaining blank when its scripts cannot load.
 ## Using the workbench
 
 1. A reference .308 load is calculated and saved on startup. Change the load
-   name, drag model/BC, projectile mass, velocity, sight/zero settings or wind.
+   name, drag model/BC, projectile mass, velocity, sight/aiming settings or wind.
 2. **Calculate trajectory** creates an unsaved preview. **Save to comparison**
    keeps its inputs and numerical result independently of the editor.
 3. Save more loads to overlay them across all three charts and the shared-distance
@@ -57,9 +57,34 @@ Solutions are held in **this tab's memory**. Refreshing clears them. The first
 version intentionally does not include browser persistence, file import/export,
 or a projectile database.
 
+## Aiming modes and zero height
+
+Choose **Aiming mode** in the trajectory editor:
+
+- **Zero at range and height:** calculates a bore angle for level, calm sight-in.
+  **Zero height** is the vertical impact offset at **Zero range**, measured from
+  the sight line: positive above, negative below, zero directly on the line.
+  Inches, centimeters and millimeters are supported, from −2.54 to +2.54 m.
+  Shot wind and shooting angle apply after this sight-in reference is found.
+- **Disable zeroing · manual angle:** enter bore elevation relative to the sight
+  line (−45° to +45°). Shooting angle tilts that sight line. The disabled zero
+  range and height fields are not used or validated.
+- **Disable zeroing · optimum ground-range angle:** searches the complete flight
+  to first ground impact for the maximum-range angle, using a configurable muzzle
+  height. This uses flat ground, calm wind and a level reference; choosing this
+  mode sets shooting angle and wind speed to zero and disables them. The preview
+  displays the calculated bore elevation. The trajectory workbench still plots
+  its requested distance and reports its solver coverage limits; use **Maximum
+  range** mode for complete ground-impact comparisons.
+
+Saved trajectories retain the mode and resolved angle. Energy searches extend
+that same angle rather than re-zeroing the solution.
+
 ## Calculators
 
-Select a saved solution and a search-distance limit. Calculators use its input
+Use **Calculator source · energy & PBR** to choose any saved solution. Saving a
+new trajectory preserves that selection and its calculator results; choosing a
+different source clears results from the previous source. Select a search-distance limit. Calculators use its input
 snapshot, not the current editor. Search distance may exceed the saved chart's
 coverage; energy search recomputes the same bore angle over the requested range.
 
@@ -67,7 +92,13 @@ coverage; energy search recomputes the same bore angle over the requested range.
   corridor is ±half that value about the line of sight. The calculator optimizes
   the low bore angle and verifies the apex and near/far boundary crossings. It
   reports the near entry, far exit, near/far zeros, peak height/distance, angle,
-  and time/energy at the exit. If sight height exceeds the radius, coverage
+  and time/energy at the exit. Set **PBR reference zero range** to report the
+  optimized trajectory's **zero height at that range**, independently of its
+  near/far zero crossings. Positive height means above the sight line; negative
+  means below. This height uses the selected shot's wind and inclination. Beyond
+  verified coverage it is explicitly unavailable. Saved PBR loads retain the
+  reference range/height and use their optimized explicit angle, so loading and
+  recalculating them preserves the trajectory. If sight height exceeds the radius, coverage
   starts at a nonzero near entry. Add the optimized load as a new comparison
   without modifying its source. This optimizes vertical path, not crosswind aim.
 - **Distance to energy threshold:** enter J or ft·lbf. The result is the first
@@ -80,21 +111,52 @@ are bounded and run in a worker. **Cancel** terminates work; later calculations
 start with a fresh worker. A 20-second work limit also prevents a stalled task
 from leaving the interface busy indefinitely.
 
+## Maximum-range mode
+
+Choose **Maximum range** above the workbench to compare complete flights to first
+impact on **flat ground in calm wind**. Enter bullet mass, muzzle velocity, drag
+model and its BC, muzzle height above ground, and an energy threshold. Optionally
+copy projectile data from a saved trajectory load. Sight settings and wind from
+that load are not used.
+
+**Calculate maximum range** searches launch angles from 0° to 90° and refines the
+best angle. It reports horizontal ground range, launch angle, impact energy and
+time, and the first downward energy crossing on that same maximum-range flight.
+The charts show height above ground and kinetic energy through impact. A separate
+table includes every upward and downward crossing: falling bullets can gain
+energy again during descent. Already below the threshold at the muzzle and no
+crossing before impact are explicit outcomes.
+
+**Save range comparison** keeps an independent snapshot. Repeat for different
+bullets and use checkboxes to overlay their flights or remove comparisons. Metric,
+imperial and individual unit overrides preserve physical values. These comparisons
+are separate from the trajectory library and are cleared on refresh.
+
+This is modelled first-impact reach, **not a certified danger radius**. It excludes
+terrain, ricochets, atmospheric variability and uncertainty. Crossing an energy
+threshold does not establish a safe-distance boundary.
+
 ## Numerical model and conventions
 
 - Supports G1, G2, G5, G6, G7 and G8 drag laws with their original coefficient
   tables. Mass is used for energy; BC-based drag is not multiplied by mass.
-- Uses distance-based RK4 integration, with a default internal step of 1.5 feet
+- The trajectory workbench uses distance-based RK4 integration, with a default internal step of 1.5 feet
   and stored one-yard states. Cubic Hermite interpolation gives arbitrary
   exact-distance samples. Speed, position and time describe the same state.
 - The core uses feet/ft·s⁻¹, with an explicit SI adapter for application state.
   Energy is `0.5 * massKg * speedMps²`. Display rounding never feeds calculations.
-- Zero is referenced to a **level, calm sight-in**. Shot inclination and wind
+- In the trajectory workbench, zero is referenced to a **level, calm sight-in**. Shot inclination and wind
   then apply to the trajectory. Gravity is −32.174 ft/s², resolved against the
   line-of-sight axis. Range follows that axis, not horizontal ground distance.
 - Wind direction describes its origin: 0° headwind, 90° from the right, 180°
   tailwind, 270° from the left. Positive path is above the sight line; positive
   drift is leftward. Displayed aiming corrections oppose displacement.
+- Maximum-range flights use adaptive time-based RK4 integration with the same
+  drag laws and gravity, independently of the legacy forward-slope cutoff. Ground
+  impact and energy events are interpolated in time. A coarse 5° scan brackets
+  a golden-section angle search; the angular stopping tolerance is 0.0001°.
+  Default limits are 600 seconds and 100,000 attempted steps per flight, plus
+  the worker watchdog. Incomplete flights fail rather than producing a maximum.
 - Crosswind drift retains GNU Ballistics' flight-time-lag approximation. This
   is not a full vector-wind model. Atmospheric corrections, spin drift and
   Coriolis are outside this version's scope.
