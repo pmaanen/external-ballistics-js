@@ -40,6 +40,12 @@ jobs:
       - name: Typecheck and build production app
         run: npm run build
 
+      - name: Install test browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Test hosted and offline startup
+        run: npm run test:browser
+
       - name: Upload production bundle
         uses: actions/upload-artifact@v7
         with:
