@@ -1,6 +1,7 @@
 export const units = {
-  m: { label: 'm', factor: 1, quantity: 'distance' },
-  yd: { label: 'yd', factor: 0.9144, quantity: 'distance' },
+  m: { label: 'm', factor: 1, quantity: 'length' },
+  yd: { label: 'yd', factor: 0.9144, quantity: 'length' },
+  ft: { label: 'ft', factor: 0.3048, quantity: 'length' },
   mm: { label: 'mm', factor: 0.001, quantity: 'length' },
   cm: { label: 'cm', factor: 0.01, quantity: 'length' },
   in: { label: 'in', factor: 0.0254, quantity: 'length' },
@@ -18,13 +19,13 @@ export const units = {
 
 export type Unit = keyof typeof units;
 export type UnitPreferences = {
-  mass: Unit; muzzle: Unit; sight: Unit; zero: Unit; wind: Unit;
+  zeroHeight: Unit; height: Unit; mass: Unit; muzzle: Unit; sight: Unit; zero: Unit; wind: Unit;
   range: Unit; path: Unit; speed: Unit; energy: Unit; angle: Unit;
 };
 export const presets: Record<'metric' | 'imperial', UnitPreferences> = {
-  metric: { mass: 'g', muzzle: 'm/s', sight: 'mm', zero: 'm', wind: 'm/s',
+  metric: { zeroHeight: 'cm', height: 'm', mass: 'g', muzzle: 'm/s', sight: 'mm', zero: 'm', wind: 'm/s',
     range: 'm', path: 'cm', speed: 'm/s', energy: 'J', angle: 'mrad' },
-  imperial: { mass: 'gr', muzzle: 'ft/s', sight: 'in', zero: 'yd', wind: 'mph',
+  imperial: { zeroHeight: 'in', height: 'ft', mass: 'gr', muzzle: 'ft/s', sight: 'in', zero: 'yd', wind: 'mph',
     range: 'yd', path: 'in', speed: 'ft/s', energy: 'ft·lbf', angle: 'MOA' },
 };
 export const toSI = (value: number, unit: Unit): number => value * units[unit].factor;

@@ -4,6 +4,7 @@ import { crossings } from './events';
 
 export interface PointBlankResult {
   solution: Solution; radiusM: number; nearEntry: Sample; farExit: Sample;
+  zeroAtRange: Sample | null; zeroRangeM: number;
   apex: Sample; nearZero: Sample | null; farZero: Sample | null; muzzleCovered: boolean;
 }
 export function apexOf(solution: Solution): Sample {
@@ -14,6 +15,7 @@ export function apexOf(solution: Solution): Sample {
 export function pointBlank(scenario: Scenario, diameterM: number, searchM: number,
   integrate: (angle: number) => Solution = angle => solveScenario(scenario, searchM, angle)): PointBlankResult {
   if (!Number.isFinite(diameterM) || diameterM <= 0 || diameterM > 5) throw new Error('Target diameter must be positive and at most 5 m.');
+  if (!Number.isFinite(scenario.zeroRangeM) || scenario.zeroRangeM < .01 || scenario.zeroRangeM > 10000) throw new Error('PBR reference zero range must be between 0.01 and 10,000 m.');
   const radiusM = diameterM / 2;
   let low = 0, high = 0.01;
   let upper = integrate(high);
@@ -50,7 +52,9 @@ export function pointBlank(scenario: Scenario, diameterM: number, searchM: numbe
       if (height > radiusM + 1e-6 || height < -radiusM - 1e-6) throw new Error('Point-blank corridor verification failed.');
     }
   }
+  const zeroAtRange = sampleAt(solution, scenario.zeroRangeM);
   solution.inputs = { ...solution.inputs, name: `${scenario.name} · PBR`.slice(0, 100),
-    zeroRangeM: farZero?.distanceM ?? scenario.zeroRangeM };
-  return { solution, radiusM, nearEntry, farExit, apex, nearZero, farZero, muzzleCovered };
+    aimMode: 'angle', boreAngleDeg: solution.zeroAngleDeg, zeroRangeM: scenario.zeroRangeM,
+    zeroHeightM: zeroAtRange?.pathM ?? scenario.zeroHeightM };
+  return { solution, zeroAtRange, zeroRangeM: scenario.zeroRangeM, radiusM, nearEntry, farExit, apex, nearZero, farZero, muzzleCovered };
 }

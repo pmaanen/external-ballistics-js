@@ -12,6 +12,10 @@ export interface Scenario {
   muzzleMps: number;
   sightHeightM: number;
   zeroRangeM: number;
+  zeroHeightM: number;
+  aimMode: 'zero' | 'angle' | 'maximum-range';
+  boreAngleDeg: number;
+  launchHeightM: number;
   inclinationDeg: number;
   windMps: number;
   windDeg: number;
@@ -38,19 +42,27 @@ export const defaultScenario: Scenario = {
   name: '.308 Win · 168 gr Match', dragModel: 'G1', bc: 0.465,
   massKg: toSI(168, 'gr'), muzzleMps: toSI(2650, 'ft/s'),
   sightHeightM: toSI(1.6, 'in'), zeroRangeM: toSI(200, 'yd'),
+  zeroHeightM: 0, aimMode: 'zero', boreAngleDeg: 0, launchHeightM: 1.5,
   inclinationDeg: 0, windMps: 0, windDeg: 90,
 };
 
 export function validateScenario(s: Scenario): void {
   if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 100) throw new ScenarioValidationError('name', 'Name your solution (1–100 characters).');
   if (!dragModels.includes(s.dragModel)) throw new ScenarioValidationError('dragModel', 'Choose a supported drag model.');
+  if (!['zero', 'angle', 'maximum-range'].includes(s.aimMode)) throw new ScenarioValidationError('aimMode', 'Choose an aiming mode.');
   const ranges: [keyof Scenario, number, number, string][] = [
     ['bc', 0.001, 10, 'BC'], ['massKg', 0.000001, 1, 'Projectile mass (kg)'],
     ['muzzleMps', 0.3048, 3047, 'Muzzle velocity (m/s)'],
-    ['sightHeightM', 0, 2.54, 'Sight height (m)'], ['zeroRangeM', 0.01, 10000, 'Zero range (m)'],
+    ['sightHeightM', 0, 2.54, 'Sight height (m)'],
     ['inclinationDeg', -89, 89, 'Shooting angle (degrees)'], ['windMps', 0, 89.408, 'Wind speed (m/s)'],
     ['windDeg', -3600, 3600, 'Wind direction (degrees)'],
   ];
+  if (s.aimMode === 'zero') ranges.push(['zeroRangeM', .01, 10000, 'Zero range (m)'], ['zeroHeightM', -2.54, 2.54, 'Zero height (m)']);
+  if (s.aimMode === 'angle') ranges.push(['boreAngleDeg', -45, 45, 'Bore elevation (degrees)']);
+  if (s.aimMode === 'maximum-range') {
+    ranges.push(['launchHeightM', 0, 1000, 'Muzzle height above ground (m)']);
+    if (s.inclinationDeg !== 0 || s.windMps !== 0) throw new ScenarioValidationError('aimMode', 'Optimum ground-range angle requires level reference and calm wind.');
+  }
   for (const [key, min, max, label] of ranges) {
     const n = s[key];
     if (typeof n !== 'number' || !Number.isFinite(n) || n < min || n > max) {
@@ -62,7 +74,8 @@ export function legacyInputs(s: Scenario): LegacyInputs {
   validateScenario(s);
   return { dragFunction: s.dragModel, dragCoefficient: s.bc,
     muzzleVelocity: fromSI(s.muzzleMps, 'ft/s'), sightHeight: fromSI(s.sightHeightM, 'in'),
-    zeroRange: fromSI(s.zeroRangeM, 'yd'), shootingAngle: s.inclinationDeg,
+    zeroRange: s.aimMode === 'zero' ? fromSI(s.zeroRangeM, 'yd') : 200,
+    yIntercept: s.aimMode === 'zero' ? fromSI(s.zeroHeightM, 'in') : 0, shootingAngle: s.inclinationDeg,
     windSpeed: fromSI(s.windMps, 'mph'), windAngle: s.windDeg };
 }
 export function makeCore(s: Scenario): ExternalBallistics {
@@ -75,7 +88,8 @@ export function solveScenario(s: Scenario, maxDistanceM: number, boreAngleDeg?: 
     throw new Error('Calculation distance must be between 0.01 and 10,000 m.');
   }
   const core = makeCore(s);
-  const zeroAngleDeg = boreAngleDeg ?? core.getZeroAngle();
+  if (s.aimMode === 'maximum-range' && boreAngleDeg === undefined) throw new Error('Compute the optimum ground-range angle before integrating.');
+  const zeroAngleDeg = boreAngleDeg ?? (s.aimMode === 'angle' ? s.boreAngleDeg : core.getZeroAngle());
   const trajectory = core.integrate(zeroAngleDeg, { maxRange: fromSI(maxDistanceM, 'yd') });
   return { inputs: { ...s }, trajectory, zeroAngleDeg, maxDistanceM: toSI(trajectory.maxRange, 'yd'),
     requestedDistanceM: maxDistanceM, solverVersion: ExternalBallistics.VERSION };
