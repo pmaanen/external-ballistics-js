@@ -1,4 +1,5 @@
 import type { Request, Response, Task, TaskResult } from '../workers/protocol';
+import SolverWorker from '../workers/solver.ts?worker&inline';
 
 export class WorkerClient {
   private worker: Worker | null = null;
@@ -16,7 +17,7 @@ export class WorkerClient {
   run(task: Task): Promise<TaskResult> {
     this.cancel();
     const id = ++this.id;
-    const worker = this.worker = new Worker(new URL('../workers/solver.ts', import.meta.url), { type: 'module' });
+    const worker = this.worker = new SolverWorker();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.cancel('Calculation exceeded the 20-second work limit. Try a shorter distance.'), 20000);
       this.pending = { reject, timer };

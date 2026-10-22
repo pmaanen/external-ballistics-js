@@ -22,11 +22,15 @@ npm run build
 npm run preview
 ```
 
-The build creates `dist/`. Serve that directory with any static HTTP host; relative
-asset paths support deployment under a subdirectory. Use an HTTP server rather
-than opening the HTML as a `file://` URL, because calculation workers are modules.
-The new application's assets are bundled locally, including Chart.js; it does
-not load CDN scripts, fonts, or external data at runtime.
+The build creates `dist/index.html`. **Open that file directly in Safari or
+Chrome**, or serve `dist/` with any static HTTP host. The production HTML embeds
+the application, styles, Chart.js and calculation worker, so it also works
+offline without a server. Keep the accompanying license/notice files when
+redistributing it. Relative paths support hosting under a subdirectory.
+
+Opening the repository's source `index.html` directly does not run TypeScript;
+use `npm run dev` or open the built `dist/index.html`. The source page now shows
+startup instructions instead of remaining blank when its scripts cannot load.
 
 ## Using the workbench
 
@@ -170,12 +174,15 @@ regeneration and tolerances are documented in [tests/fixtures](tests/fixtures/RE
 Playwright runs the production build in Chromium, Firefox and WebKit. Browser
 tests cover mixed units, comparisons, arbitrary table steps, both calculators,
 coverage, invalid/zero input, cancellation/recovery, mobile layout, keyboard use,
-safe names and local asset loading. Build before running browser tests.
+safe names and local asset loading. Startup regressions also exercise the built
+HTML directly through `file://`, offline in an isolated directory, including
+both calculators and saved comparisons. Build before running browser tests.
 
 The [GitHub Actions build workflow](.github/workflows/build.yml) runs on pushes,
 pull requests, and manual dispatch. It uses the Node version from `.nvmrc`, caches
 npm downloads, installs with `npm ci`, runs regression tests, and typechecks/builds
-the app. Successful runs upload `dist/` as the downloadable `vector-app-dist`
+the app. It also runs the production browser suite, including offline-file
+startup, before uploading `dist/` as the downloadable `vector-app-dist`
 artifact, retained for 14 days.
 
 ## License and attribution

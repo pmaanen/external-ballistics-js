@@ -45,6 +45,10 @@ checks this coordinate contract.
   tables and calculators use the full result data.
 - `src/app/main.ts` / `styles.css`: responsive plain TypeScript/HTML/CSS interface,
   field units, form validation, comparison controls, calculator results and notes.
+- `vite.config.ts`: embeds the application chunk and stylesheet into production
+  HTML. The worker uses Vite's inline-worker import, preserving cancellable
+  background calculation while allowing offline `file://` startup. Source HTML
+  includes a visible fallback for failed script loading.
 
 ## Numerical accuracy and work limits
 
@@ -94,12 +98,21 @@ concurrent test load. These are local observations, not performance guarantees.
 - Desktop/mobile screenshots inspected during browser QA. The new frontend's
   asset requests stay on the local origin; no runtime CDN dependencies are used.
 
-Final verification: `npm test` passed all 29 tests; `npm run build` passed with
+Initial 0.2.0 verification: `npm test` passed all 29 tests; `npm run build` passed with
 TypeScript checking; Playwright passed all 27 workflows across Chromium,
 Firefox and WebKit. JavaScript syntax and documentation link checks also passed.
 The historical legacy
 Vue rendering is not covered by the new app's browser suite; its calculation
 handling is covered in an isolated VM regression and its Vuetify version is pinned.
+
+The 2026-10-22 startup fix was reproduced against the original build through
+`file://`, where external module loading prevented the interface from rendering.
+The build now embeds its code, styles and worker. Verification passed all 29
+numerical/domain tests, the production build, and all 33 browser cases across
+Chromium, Firefox and WebKit. New cases open a copied HTML file offline in an
+isolated directory, exercise both calculators and saved comparisons, and check
+that opening unbuilt source HTML shows instructions. CI runs this browser suite
+before uploading the production bundle.
 
 ## Deliberate scope boundaries
 

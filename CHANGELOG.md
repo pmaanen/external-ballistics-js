@@ -3,6 +3,16 @@
 Versions follow Semantic Versioning. The `0.x` series is initial development;
 minor releases may include breaking changes, which are listed explicitly.
 
+## Unreleased
+
+### Fixed
+
+- Opening the downloaded production HTML directly no longer leaves a blank page:
+  application code, styles and the calculation worker are embedded in the HTML.
+- Source HTML shows startup instructions if opened without a development server.
+- Browser regressions now cover offline-file startup and calculations, and run
+  in CI before the production artifact is uploaded.
+
 ## 0.2.0 — 2026-10-21
 
 ### Added

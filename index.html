@@ -10,7 +10,22 @@
   </head>
   <body>
     <a class="skip-link" href="#load-form">Skip to calculator</a>
-    <div id="app"></div>
+    <div id="app">
+      <section id="startup-status" role="status" aria-live="polite" style="max-width:38rem;margin:4rem auto;padding:1.5rem;font:16px/1.6 system-ui,sans-serif">
+        <h1>Starting Vector…</h1>
+        <p>If this message remains, open the built <code>dist/index.html</code>, or run <code>npm run dev</code> and open the local address it prints. The source HTML needs the development server.</p>
+        <noscript><p>JavaScript must be enabled to use the workbench.</p></noscript>
+      </section>
+    </div>
+    <script>
+      window.addEventListener('error', function () {
+        var status = document.getElementById('startup-status');
+        if (status) {
+          status.querySelector('h1').textContent = 'Vector could not start';
+          status.setAttribute('role', 'alert');
+        }
+      }, true);
+    </script>
     <script type="module" src="/src/app/main.ts"></script>
   </body>
 </html>

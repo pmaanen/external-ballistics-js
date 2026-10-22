@@ -80,6 +80,9 @@ npm run test:browser
 `npx playwright install chromium firefox webkit`. `npm run dev` starts the app;
 `npm run preview` serves the production build. No external runtime assets are
 needed for the new frontend. The legacy demo has pinned external Vuetify assets.
+The production HTML is self-contained and must also work when opened directly
+through `file://`. Preserve the inline-worker import and portable-HTML build
+plugin; test offline file startup as well as the HTTP preview.
 
 The classic file intentionally publishes only `globalThis.ExternalBallistics`;
 `src/ballistics/core.js` is the module entry point. Test both direct classic-script
