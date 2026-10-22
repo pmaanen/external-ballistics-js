@@ -12,6 +12,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
     let value: TaskResult;
     switch (task.kind) {
       case 'maximum-range': value = { kind: 'maximum-range', result: maximumRange(task.projectile, task.heightM, task.thresholdJ) }; break;
+      case 'recalculate': value = { kind: 'recalculate', results: task.entries.map(entry => ({ id: entry.id, result: solveScenario(entry.inputs, task.distanceM, entry.angleDeg) })) }; break;
       case 'solve': value = { kind: 'solve', solution: configuredTrajectory(task.scenario, task.distanceM) }; break;
       case 'energy': {
         const solution = solveScenario(task.solution.inputs, task.distanceM, task.solution.zeroAngleDeg);

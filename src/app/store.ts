@@ -1,3 +1,4 @@
+import { moveCard } from './card-order';
 import type { Solution } from '../ballistics/model';
 
 const colors = ['#a5f27a', '#79c7ff', '#f9b56b', '#e1a0ed', '#69e0cd', '#f98599'];
@@ -21,6 +22,20 @@ export class SolutionStore {
     this.items.push(item);
     return item;
   }
+  restore(items: SavedSolution[]): void {
+    this.items = items.map(item => ({ ...item, dash: [...item.dash], result: freezeResult(item.result) }));
+    this.sequence = this.items.length;
+  }
+  snapshot(): SavedSolution[] { return this.items.map(item => ({ ...item, dash: [...item.dash] })); }
+  replace(id: string, result: Solution): void {
+    const item = this.get(id); item.result = freezeResult(result); item.name = result.inputs.name;
+  }
+  replaceBatch(results: { id: string; result: Solution }[]): void {
+    const updates = results.filter(update => this.items.some(item => item.id === update.id))
+      .map(update => ({ id: update.id, result: freezeResult({ ...update.result, inputs: { ...update.result.inputs, name: this.get(update.id).name } }) }));
+    for (const update of updates) this.get(update.id).result = update.result;
+  }
+  move(id: string, target: string, after = false): void { moveCard(this.items, id, target, after); }
   rename(id: string, name: string): void {
     if (!name.trim() || name.length > 100) throw new Error('Use a name of 1–100 characters.');
     this.get(id).name = name.trim();
