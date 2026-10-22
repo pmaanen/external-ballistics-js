@@ -3,6 +3,33 @@
 Versions follow Semantic Versioning. The `0.x` series is initial development;
 minor releases may include breaking changes, which are listed explicitly.
 
+## 0.3.0 — 2026-10-22
+
+### Compatibility
+
+- The TypeScript SI scenario contract now requires aiming mode, zero height,
+  manual bore angle and launch height; initialize from `defaultScenario` when
+  constructing scenarios. Unit preferences add zero-height and ground-height
+  units. The classic browser-global API remains compatible.
+
+### Fixed
+
+- Saving another trajectory preserves the chosen calculator source and results.
+- Saved PBR trajectories retain their optimized angle when recalculated.
+
+### Added
+
+- Zero-height offsets at a specified zero range, manual bore-angle mode and
+  optimum ground-range angle mode in the trajectory editor.
+- PBR reference zero range and the corresponding optimum zero-height result.
+- Maximum-range mode for calm wind over flat ground, with configurable muzzle
+  height, automatic launch-angle search and complete first-impact flights.
+- Independent bullet comparisons, ground-height and energy plots, impact times
+  and energies, and upward/downward energy threshold crossings on each bullet's
+  maximum-range flight. Metric, imperial and mixed units are supported.
+- Analytic vacuum and step-refinement checks for the time-based flight engine,
+  plus hosted and offline browser coverage for the new mode.
+
 ## 0.2.1 — 2026-10-22
 
 ### Fixed
