@@ -3,6 +3,28 @@
 Versions follow Semantic Versioning. The `0.x` series is initial development;
 minor releases may include breaking changes, which are listed explicitly.
 
+## 0.4.0 — 2026-10-23
+
+### Added
+
+- Automatic local persistence of both solution libraries, calculated previews,
+  unit preferences, card order/visibility and calculator selection.
+- Drag, touch and keyboard card reordering; explicit editing and overwriting
+  while preserving card identity and display style.
+- Automatic batch recalculation when the trajectory distance window changes,
+  preserving saved angles and retaining previous results on cancellation/failure.
+- Modelled safe distance in the maximum-range view: earlier ground impact or
+  threshold event, with a zero-distance muzzle outcome when already below.
+- Searchable WilsonKinetics bullet catalog in trajectory and maximum-range
+  editors, with 5,686 records, manufacturer/diameter filters and explicit listed
+  G1/G7 coefficient selection. The catalog and full MIT notice work offline.
+- Source credit to Reese Wilson / Wilson Armament Bureau and Wilson Kinetics,
+  a pinned unmodified CSV snapshot, license notice, provenance and data checks.
+
+### Changed
+
+- Maximum-range angle optimization is now exclusive to the maximum-range screen.
+
 ## 0.3.1 — 2026-10-22
 
 ### Fixed
