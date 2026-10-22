@@ -207,3 +207,24 @@ zero-height conversion, disabled-zero validation, optimum-angle worker execution
 PBR reference height, saved-angle reproduction, and unavailable reference coverage.
 Offline standalone-HTML checks also exercise manual angle and PBR height output.
 The updated desktop PBR screenshot was inspected.
+
+## Maximum-range CI refinement fix (0.3.1)
+
+The failed GitHub Actions run 39853531594 used runner 2.338.0, Ubuntu 24.04.5,
+image 20261012.334.1 and Node 24.21.0. Dependency installation succeeded; the
+refinement test failed because default and 0.025 s capped integrations differed
+by 0.0241 m against a 0.02 m bound. The runner was not the cause.
+
+Adaptive RK4 step choices near the piecewise drag boundaries are sensitive to
+floating-point differences. Tightening the absolute/relative local error scales
+from 1e-5/1e-8 to 1e-7/1e-10 reduces that sensitivity without changing the drag
+model or loosening the existing acceptance tests. Added regressions cover all
+six models at three launch angles and 0.5/0.2/0.025 s caps, compared with 0.002 s
+flights (5 mm range, 50 microsecond time and 0.001 J impact-energy bounds). These
+are tested numerical convergence bounds, not real-world accuracy claims. The
+new matrix fails against the previous integration settings on Node 24 locally.
+The workflow keeps its existing supported hosted runner and action versions.
+
+Local verification used Node 24.22.1: all 45 numerical/domain tests, TypeScript
+checking and the production build passed. All 54 production browser workflows
+passed across Chromium, Firefox and WebKit, including offline file startup.

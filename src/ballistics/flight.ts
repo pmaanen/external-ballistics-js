@@ -67,7 +67,10 @@ export function groundFlight(p: Projectile, angleDeg: number, launchHeightM: num
     dt = Math.min(dt, maxTime - time);
     if (dt < 1e-8) throw new Error('Flight time limit reached before ground impact; maximum range is unknown.');
     const full = rk4(s, dt), half = rk4(s, dt / 2), fine = rk4(half, dt / 2);
-    const error = Math.max(...fine.map((v, i) => Math.abs(v - full[i]) / (15 * (1e-5 + 1e-8 * Math.max(Math.abs(v), Math.abs(s[i]))))));
+    // Piecewise GNU drag coefficients can make adaptive step choices sensitive
+    // to floating-point differences. Keep local error well below the global
+    // range/impact refinement bounds, including across coefficient boundaries.
+    const error = Math.max(...fine.map((v, i) => Math.abs(v - full[i]) / (15 * (1e-7 + 1e-10 * Math.max(Math.abs(v), Math.abs(s[i]))))));
     if (!Number.isFinite(error)) throw new Error('Flight could not be resolved numerically.');
     if (error > 1) { dt *= Math.max(.1, .9 * error ** -.2); continue; }
     const next = point(fine, time + dt);

@@ -144,7 +144,7 @@ function finite(name, value, min, max) {
 }
 
 ExternalBallistics.Error = BallisticsError;
-ExternalBallistics.VERSION = '0.3.0';
+ExternalBallistics.VERSION = '0.3.1';
 ExternalBallistics.prototype.setVariables = function (v) {
     if (!v || !Object.prototype.hasOwnProperty.call(this.DRAG_FUNCTIONS, v.dragFunction)) {
         throw new BallisticsError('INVALID_INPUT', 'Choose a supported drag model: G1, G2, G5, G6, G7 or G8.');

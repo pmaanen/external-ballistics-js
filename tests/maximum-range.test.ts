@@ -98,3 +98,18 @@ test('a shallow ground launch landing within its first step does not return muzz
   close(r.impact.timeS, expected, 1e-9);
   assert.ok(r.impact.distanceM > 0 && r.impact.vyMps < 0);
 });
+
+test('piecewise drag flights converge across coarse time caps for every model', () => {
+  for (const dragModel of ['G1', 'G2', 'G5', 'G6', 'G7', 'G8'] as const) {
+    for (const angle of [10, 33.862601494011834, 80]) {
+      const p = { ...defaultScenario, dragModel };
+      const reference = groundFlight(p, angle, 1.5, { maxStepS: .002 });
+      for (const maxStepS of [.5, .2, .025]) {
+        const flight = groundFlight(p, angle, 1.5, { maxStepS });
+        close(flight.impact.distanceM, reference.impact.distanceM, .005);
+        close(flight.impact.timeS, reference.impact.timeS, .00005);
+        close(flight.impact.energyJ, reference.impact.energyJ, .001);
+      }
+    }
+  }
+});

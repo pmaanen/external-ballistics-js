@@ -3,6 +3,16 @@
 Versions follow Semantic Versioning. The `0.x` series is initial development;
 minor releases may include breaking changes, which are listed explicitly.
 
+## 0.3.1 — 2026-10-22
+
+### Fixed
+
+- Tightened adaptive time-integration accuracy for maximum-range flights across
+  piecewise drag-table boundaries. This fixes a refinement test failure in Linux
+  CI without relaxing its tolerance or changing the hosted runner.
+- Added all-model convergence checks against 0.002 s time-step flights at shallow,
+  near-optimum and steep launch angles.
+
 ## 0.3.0 — 2026-10-22
 
 ### Compatibility
