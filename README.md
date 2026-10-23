@@ -289,8 +289,11 @@ both calculators and saved comparisons. Build before running browser tests.
 The [GitHub Actions build workflow](.github/workflows/build.yml) runs on pushes,
 pull requests, and manual dispatch. It uses the Node version from `.nvmrc`, caches
 npm downloads, installs with `npm ci`, runs regression tests, and typechecks/builds
-the app. It also runs the production browser suite, including offline-file
-startup, before uploading `dist/` as the downloadable `vector-app-dist`
+the app. Jobs use the official Playwright container with preinstalled browsers
+and system libraries, avoiding per-run Ubuntu package downloads. Keep the image
+version aligned with the pinned `@playwright/test` dependency. It also runs the
+production browser suite, including offline-file startup, before uploading
+`dist/` as the downloadable `vector-app-dist`
 artifact, retained for 14 days.
 
 ## License and attribution

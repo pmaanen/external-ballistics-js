@@ -319,3 +319,22 @@ standalone HTML restores its locally saved workspace while offline. Existing
 mixed-unit, keyboard and responsive-layout checks passed; mobile workbench and
 maximum-range safe-distance screenshots were inspected. Touch pointer handling is
 implemented, but physical touchscreen dragging was not separately exercised.
+
+## CI browser provisioning
+
+The [timed-out build run](https://github.com/pmaanen/external-ballistics-js/actions/runs/39864163554)
+completed regression tests and the production build, then exhausted its ten-minute
+job limit downloading Ubuntu packages from `azure.archive.ubuntu.com` during
+`playwright install --with-deps`. The browser suite never started. Another run of
+the same commit succeeded, consistent with an intermittent mirror slowdown.
+
+The build job now uses `mcr.microsoft.com/playwright:v1.64.1-noble`, with browsers
+and operating-system libraries already installed, and no per-run apt install.
+Keep this image tag aligned with the exact `@playwright/test` package version.
+Shared host IPC follows Playwright's Chromium container guidance. The existing
+ten-minute bound, all three browser projects and offline-file checks remain.
+The published image manifest was verified for Linux amd64 and arm64; workflow
+YAML parsing and package/image version alignment were checked locally. The local
+Docker daemon is unavailable, so container execution needs a hosted CI run.
+Local verification passed: 55 tests, TypeScript/production build and all 81
+browser checks across Chromium, Firefox and WebKit, including offline startup.

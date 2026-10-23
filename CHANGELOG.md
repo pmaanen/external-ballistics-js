@@ -7,6 +7,8 @@ minor releases may include breaking changes, which are listed explicitly.
 
 ### Fixed
 
+- Avoid CI runtime exhaustion on slow Ubuntu package mirrors by using the
+  version-matched Playwright container with preinstalled browsers and libraries.
 - Clarified attribution: Derek Yates authored GNU Ballistics, Harri Rissanen
   created the JavaScript port, and Paul Maanen forked that port.
 

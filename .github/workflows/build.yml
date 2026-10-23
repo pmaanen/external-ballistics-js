@@ -17,6 +17,11 @@ jobs:
     name: Test and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    container:
+      # Keep this version aligned with @playwright/test in package.json.
+      # Includes browsers and OS libraries; avoid slow apt mirrors during jobs.
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
 
     steps:
       - name: Check out repository
@@ -39,9 +44,6 @@ jobs:
 
       - name: Typecheck and build production app
         run: npm run build
-
-      - name: Install test browsers
-        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Test hosted and offline startup
         run: npm run test:browser
