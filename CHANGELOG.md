@@ -3,6 +3,13 @@
 Versions follow Semantic Versioning. The `0.x` series is initial development;
 minor releases may include breaking changes, which are listed explicitly.
 
+## Unreleased
+
+### Fixed
+
+- Clarified attribution: Derek Yates authored GNU Ballistics, Harri Rissanen
+  created the JavaScript port, and Paul Maanen forked that port.
+
 ## 0.4.0 — 2026-10-23
 
 ### Added

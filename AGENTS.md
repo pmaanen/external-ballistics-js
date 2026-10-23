@@ -2,9 +2,11 @@
 
 ## Project and current scope
 
-This repository ports the GNU Ballistics C library to JavaScript. The numerical
-library is in `src/external-ballistics.js`; `example_app/` contains a historical
-Vue demonstration and vendored dependencies. `LICENSE` contains GPL version 2.
+The original GNU Ballistics C library was authored by Derek Yates. Harri Rissanen
+created the JavaScript port; this repository is Paul Maanen's fork of that port.
+Preserve this distinction in source, documentation and distributed credits.
+The numerical library is in `src/external-ballistics.js`; `example_app/` contains
+a historical Vue demonstration and vendored dependencies. `LICENSE` contains GPL version 2.
 Preserve existing license and attribution notices.
 
 The user has authorized implementation of the fixes and frontend. The historical

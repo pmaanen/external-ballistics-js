@@ -295,8 +295,11 @@ artifact, retained for 14 days.
 
 ## License and attribution
 
-GNU GPL version 2; see [LICENSE](LICENSE). Original GNU Ballistics routines are
-attributed to Derek Yates. The pinned historical C mirror is attributed in the
-fixtures. The legacy Vue and Chart.js files retain their original notices.
+GNU GPL version 2; see [LICENSE](LICENSE). Derek Yates authored the original GNU
+Ballistics C library. [Harri Rissanen](https://github.com/harriris/external-ballistics-js)
+created the JavaScript port; this repository is
+[Paul Maanen's fork](https://github.com/pmaanen/external-ballistics-js) of that port.
+The pinned historical C mirror is attributed in the fixtures. The legacy Vue and
+Chart.js files retain their original notices.
 Bundled Chart.js and its color utility are MIT-licensed; notices are included in
 `public/THIRD_PARTY_NOTICES.txt` and distributed with the built app.

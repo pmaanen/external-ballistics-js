@@ -1,4 +1,6 @@
 /* JavaScript port of the GNU Ballistics Library, distributed under GPL-2.0.
+ * Original GNU Ballistics C library by Derek Yates.
+ * JavaScript port by Harri Rissanen; this fork by Paul Maanen.
  * Numerical integration, validation and sampling revised 2026-10-21.
  * Drag coefficients retain the original GNU Ballistics values and attribution.
  */

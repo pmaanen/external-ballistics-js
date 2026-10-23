@@ -1,7 +1,15 @@
 THIRD-PARTY NOTICES
 
 Vector / external-ballistics.js is distributed under GNU GPL version 2.
-See LICENSE.txt. The following bundled runtime dependencies retain their licenses.
+See LICENSE.txt.
+
+The original GNU Ballistics C library was authored by Derek Yates.
+Harri Rissanen created the JavaScript port:
+https://github.com/harriris/external-ballistics-js
+This repository is Paul Maanen's fork of that port:
+https://github.com/pmaanen/external-ballistics-js
+
+The following bundled runtime dependencies retain their licenses.
 
 chart.js
 The MIT License (MIT)
