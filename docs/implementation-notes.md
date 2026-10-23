@@ -338,3 +338,14 @@ YAML parsing and package/image version alignment were checked locally. The local
 Docker daemon is unavailable, so container execution needs a hosted CI run.
 Local verification passed: 55 tests, TypeScript/production build and all 81
 browser checks across Chromium, Firefox and WebKit, including offline startup.
+
+The first hosted container run reached the browser suite, but Firefox rejected
+running as root with GitHub's `/github/home` owned by `pwuser`. Container options
+now include `--user 1001`, as recommended by Playwright's GitHub Actions example,
+so the executing user matches that home directory. No home override or browser
+sandbox bypass is needed. The same run timed out in one WebKit cancellation test.
+The test now holds recalculation worker messages until explicitly released,
+skipping terminated workers, instead of racing a 350 ms delay. Cancellation is
+asserted while the job is held. CI uses one browser worker to avoid CPU contention;
+local runs retain three. Failed jobs upload `test-results/`, including traces and
+error contexts, for seven days to support diagnosis of any subsequent failures.

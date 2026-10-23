@@ -7,6 +7,8 @@ minor releases may include breaking changes, which are listed explicitly.
 
 ### Fixed
 
+- Run CI browsers as the container home owner so Firefox can launch; serialize
+  CI browser tests, synchronize cancellation checks and retain failure traces.
 - Avoid CI runtime exhaustion on slow Ubuntu package mirrors by using the
   version-matched Playwright container with preinstalled browsers and libraries.
 - Clarified attribution: Derek Yates authored GNU Ballistics, Harri Rissanen

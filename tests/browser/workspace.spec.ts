@@ -73,11 +73,15 @@ test('previews and maximum-range edits, keyboard order and safe distances surviv
 test('distance updates recalculate all hidden and visible records, latest edit wins, cancellation retains old data', async ({ page }) => {
   await page.addInitScript(() => {
     const Native = window.Worker;
+    const pending: (() => void)[] = [];
+    Object.assign(window, { releaseRecalculations() { pending.splice(0).forEach(send => send()); } });
     window.Worker = class extends Native {
+      private stopped = false;
+      terminate() { this.stopped = true; super.terminate(); }
       postMessage(message: any) {
         if (message.task?.kind === 'recalculate' && message.task.distanceM === 1200) {
-          setTimeout(() => this.dispatchEvent(new MessageEvent('message', { data: { id: message.id, ok: false, error: 'Injected batch failure' } })), 50);
-        } else if (message.task?.kind === 'recalculate') setTimeout(() => super.postMessage(message), 350);
+          queueMicrotask(() => { if (!this.stopped) this.dispatchEvent(new MessageEvent('message', { data: { id: message.id, ok: false, error: 'Injected batch failure' } })); });
+        } else if (message.task?.kind === 'recalculate') pending.push(() => { if (!this.stopped) super.postMessage(message); });
         else super.postMessage(message);
       }
     } as typeof Worker;
@@ -89,7 +93,9 @@ test('distance updates recalculate all hidden and visible records, latest edit w
   const before = await read(page);
   await page.locator('#range-max').fill('2000'); await page.locator('#range-max').dispatchEvent('change');
   await page.locator('#range-max').fill('600'); await page.locator('#range-max').dispatchEvent('change');
-  await page.locator('h1').click(); await expect(page.locator('#range-status')).toContainText('recalculated'); await expect(page.locator('#task-bar')).toBeHidden();
+  await page.locator('h1').click(); await expect(page.locator('#task-bar')).toBeVisible();
+  await page.evaluate(() => (window as unknown as { releaseRecalculations(): void }).releaseRecalculations());
+  await expect(page.locator('#range-status')).toContainText('recalculated'); await expect(page.locator('#task-bar')).toBeHidden();
   const after = await read(page);
   expect(after.view.max).toBe(600);
   for (let i = 0; i < after.solutions.length; i++) { expect(after.solutions[i].result.requestedDistanceM).toBe(600); expect(after.solutions[i].result.zeroAngleDeg).toBe(before.solutions[i].result.zeroAngleDeg); }

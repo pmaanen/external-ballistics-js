@@ -291,7 +291,10 @@ pull requests, and manual dispatch. It uses the Node version from `.nvmrc`, cach
 npm downloads, installs with `npm ci`, runs regression tests, and typechecks/builds
 the app. Jobs use the official Playwright container with preinstalled browsers
 and system libraries, avoiding per-run Ubuntu package downloads. Keep the image
-version aligned with the pinned `@playwright/test` dependency. It also runs the
+version aligned with the pinned `@playwright/test` dependency. The container runs
+as UID 1001 to match GitHub's mounted home directory, which Firefox requires.
+Browser tests use one worker in CI and retain failure traces as the
+`browser-test-results` artifact for seven days. It also runs the
 production browser suite, including offline-file startup, before uploading
 `dist/` as the downloadable `vector-app-dist`
 artifact, retained for 14 days.

@@ -21,7 +21,8 @@ jobs:
       # Keep this version aligned with @playwright/test in package.json.
       # Includes browsers and OS libraries; avoid slow apt mirrors during jobs.
       image: mcr.microsoft.com/playwright:v1.64.1-noble
-      options: --ipc=host
+      # GitHub's mounted home belongs to UID 1001; Firefox requires matching ownership.
+      options: --ipc=host --user 1001
 
     steps:
       - name: Check out repository
@@ -47,6 +48,15 @@ jobs:
 
       - name: Test hosted and offline startup
         run: npm run test:browser
+
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload production bundle
         uses: actions/upload-artifact@v7
